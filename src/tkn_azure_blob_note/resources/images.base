@@ -1,0 +1,14 @@
+filters:
+  and:
+    - 'file.ext == "md"'
+    - 'assetId != null'
+views:
+  - type: cards
+    name: Images
+    image: note.cover
+    cardSize: 180
+    imageFit: contain
+    order: [title, category, description, syncStatus, tags]
+  - type: table
+    name: Inventory
+    order: [title, category, assetId, url, localPath, sourceAvailable, sha256]

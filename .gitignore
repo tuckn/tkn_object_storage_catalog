@@ -1,0 +1,26 @@
+# Runtime data belongs in the configured user data root.
+/_inbox/
+/private/
+/public/
+/index/
+/.tkn/
+/.env
+/.env.*
+/.obsidian/
+/.local/
+/.agents/
+/.codex-context/
+/scripts/
+.tmp/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+dist/
+build/
+*.egg-info/
+*.log
+*.tmp
+sync.ffs_db
