@@ -30,10 +30,10 @@ def test_five_layers_and_origin(tmp_path):
     config = load_config(extra, {"conversion": {"quality": 90}}, home=home, cwd=cwd)
     assert config.conversion["quality"] == 90
     assert config.conversion["lossless"] is True
-    assert config.origins["conversion.quality"] == "CLI"
-    assert config.origins["conversion.lossless"] == str(home / "config.yaml")
-    assert len(config.sources) == 4
-    assert config.sources[-1]["schema_version"] == "1.0.9"
+    assert config.origins["sources.images.conversion.quality"] == "CLI"
+    assert config.origins["sources.images.conversion.lossless"] == str(home / "config.yaml")
+    assert len(config.loaded_sources) == 4
+    assert config.loaded_sources[-1]["schema_version"] == "1.0.9"
 
 
 @pytest.mark.parametrize(
@@ -41,7 +41,7 @@ def test_five_layers_and_origin(tmp_path):
     [
         "conversion: {}",
         "schema_version: 1\n",
-        'schema_version: "2.0.0"\n',
+        'schema_version: "3.0.0"\n',
         'schema_version: "1.1.0"\n',
         'schema_version: "1.0"\n',
         'schema_version: "1.0.0"\nconversion:\n  mystery: 1\n',
@@ -67,7 +67,7 @@ def test_init_protection_and_backup(tmp_path):
     assert not path.exists()
     assert init_config(path)["status"] == "created"
     assert init_config(path)["status"] == "unchanged"
-    assert 'schema_version: "1.0.0"' in path.read_text()
+    assert 'schema_version: "2.0.0"' in path.read_text()
     path.write_text("# Edited\n" + path.read_text(), encoding="utf-8")
     with pytest.raises(ConflictError):
         init_config(path)
@@ -92,7 +92,7 @@ def test_config_and_help_readonly(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     assert main(["config", "list", "--json"]) == 0
     result = json.loads(capsys.readouterr().out)
-    assert result["config"]["notes_root"].endswith("notes")
+    assert result["config"]["sources"]["images"]["notes_root"].endswith("notes")
     assert not (tmp_path / "home").exists()
     for option in ("--help", "--version"):
         with pytest.raises(SystemExit) as stop:
@@ -110,7 +110,7 @@ def test_installed_entrypoint_outside_repository(tmp_path):
         text=True,
     )
     assert completed.returncode == 0
-    assert "tkn-azure-blob-note 0.1.0" in completed.stdout
+    assert "tkn-azure-blob-note 0.2.0" in completed.stdout
 
 
 def test_cli_import_json_and_quiet(cfg, source, capsys):

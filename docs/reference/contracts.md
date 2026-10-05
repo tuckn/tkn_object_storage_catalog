@@ -1,158 +1,257 @@
-# Configuration and data contracts
+# 設定とデータの取り決め
 
-## Settings
+この文書は、`tkn-azure-blob-note` の設定、ファイルの形式、識別子、同期の判定規則をまとめたリファレンスです。
+導入と日常の使い方は [README](../../README.md) を参照します。
 
-Configuration uses a separate schema version, currently `"1.0.0"`.
-Each file must have this string before merging. Version 1.0.x patches are accepted;
-newer minors/majors and unsupported old majors fail. Unknown keys, duplicate YAML
-keys, wrong types, and credentials/query strings in configured URLs are rejected.
-Reading settings never rewrites them.
+## 1. 設定
 
-Precedence, from weakest to strongest:
+### 1.1. スキーマ バージョン
 
-1. Packaged defaults.
-2. `~/.tkn/azure_blob_note/config.yaml`.
-3. `./.tkn/config.yaml` in the invocation's working directory.
-4. An explicitly supplied `--config FILE`.
-5. Corresponding CLI options.
+設定ファイルは、データとは別のスキーマ バージョンを持ちます。
+現在の設定スキーマは `"2.0.0"` です。カタログ、ノート、同期記録のデータスキーマは `"1.0.0"` のままです。
 
-Each source is validated independently. A malformed lower source cannot be hidden
-by a valid override. Missing automatic sources are skipped; a missing explicit
-source fails. There are no named profiles in this version. `.env` files are not loaded.
+- 各設定ファイルに、引用符で囲んだ `schema_version` が必要です。
+- `2.0.x` を読み込みます。旧形式の `1.0.x` は `images` source に正規化し、従来の保存先を保持します。それ以外の版はエラーになります。
+- 未知のキー、重複した YAML キー、型の誤り、URL に含まれる認証情報やクエリ文字列はエラーになります。
+- 設定の読み込みが、設定ファイルを書き換えることはありません。
 
-`~` expands to the current user's home. Relative settings resolve against the
-invocation's working directory. Absolute paths are recommended for scheduled use.
-Data and state roots cannot overlap. Notes cannot overlap internal image, catalog,
-provenance, backup, or state trees.
+### 1.2. 優先順位
 
-| Key | Default | Meaning |
+設定は次の順に読み込み、後のものが前のものを上書きします。
+
+1. パッケージに同梱した既定値
+2. `~/.tkn/azure_blob_note/config.yaml`
+3. コマンドを実行したフォルダーの `./.tkn/config.yaml`
+4. `--config FILE` で明示したファイル
+5. 対応する CLI オプション（`--data-root`、`--state-root`、`--notes-root`、`import` の `--convert` / `--no-convert`）
+
+各ファイルは個別に検証します。
+優先順位の低いファイルに誤りがある場合、上書きする側が正しくてもエラーになります。
+2 と 3 のファイルは、存在しなければ読み飛ばします。
+`--config` で指定したファイルが存在しない場合はエラーになります。
+
+`sources` は source ID をキーにしたマッピングです。
+新形式で後のファイルに `sources` を書くと、前の一覧全体を置き換えます。
+各 source の省略項目には、組み込みの既定値を適用します。
+旧形式どうしの設定は、従来どおり項目単位で上書きします。
+CLI の保存先・変換オプションは、選択した source だけを上書きします。
+
+source が1つなら自動選択し、複数ならデータ操作に `--source <id>` が必要です。
+`config list` は選択なしで全 source を表示できます。
+`config.sources` が接続先の一覧、`loaded_sources` が設定ファイルの読み込み履歴、
+`origins` が値ごとの決定元、`selected_source` が選択した source ID です。
+source ID は1〜64文字の小文字英数字・アンダースコア・ハイフンで、先頭は英数字にします。
+Windows の予約名（`con` など）は使えません。
+
+1コンテナーは1 source に対応します。
+同じアカウントとコンテナーの組を複数の source に設定すると、prefix が違ってもエラーになります。
+別アカウントなら同じコンテナー名を使えます。
+`.env` ファイルは読み込みません。
+
+有効な設定値と、各値の由来は `tkn-azure-blob-note config list` で確認できます。
+
+### 1.3. パスの解決
+
+- `~` は、現在のユーザーのホーム フォルダーに展開します。
+- 相対パスは、コマンドを実行したフォルダーを基準に解決します。スケジュール実行では絶対パスを推奨します。
+- source ごとの `data_root` と `state_root` は、互いに重ならない別のフォルダーにします。
+- 異なる source のデータ・状態・ノート保存先は、同じフォルダーにも親子のフォルダーにもできません。
+- `notes_root` は、`data_root` 内の `staging`、`originals`、`releases`、`catalog`、`provenance`、`history`、および `state_root` と重ねられません。
+
+### 1.4. 設定キー
+
+`schema_version` と `sources` は最上位に書きます。
+次の表の保存先・Azure・配信・変換のキーは、すべて `sources.<source-id>.` 以下です。
+
+| キー | 既定値 | 意味 |
 | --- | --- | --- |
-| `schema_version` | `"1.0.0"` | Required per configuration file |
-| `data_root` | `~/.tkn/azure_blob_note/data` | Persistent image library |
-| `state_root` | `~/.tkn/azure_blob_note/state` | Operational records |
-| `notes_root` | `null` | Resolves to `data_root/notes` |
-| `azure.account_url` | `null` | HTTPS account endpoint, no path/query |
-| `azure.container` | `null` | Existing container; required for Azure commands |
-| `azure.prefix` | empty | Optional relative blob directory |
-| `azure.auth` | `azure_cli` | `azure_cli` or `managed_identity` |
-| `azure.managed_identity_client_id` | `null` | Optional user-assigned identity |
-| `azure.timeout_seconds` | 60 | Positive server, socket and CLI-credential timeout; not a whole-batch deadline |
-| `delivery.url_base` | `null` | Delivery URL corresponding to the configured prefix |
-| `delivery.cache_control` | `null` | Cache-Control on upload; null preserves an existing blob's setting |
-| `conversion.enabled` | true | Convert eligible static JPEG/PNG files to WebP |
-| `conversion.format` | `webp` | The supported conversion format |
-| `conversion.quality` | 82 | Integer from 0 through 100 |
-| `conversion.lossless` | false | Use lossless WebP encoding |
-| `conversion.strip_metadata` | true | Omit EXIF, XMP and ICC metadata from derivatives |
+| `schema_version` | `"2.0.0"` | 設定ファイルごとに必須です。 |
+| `sources` | `images` の1 source | source ID をキーとする設定一覧です。 |
+| `data_root` | `~/.tkn/azure_blob_note/data/<source-id>` | 画像とノートを保存する領域です。 |
+| `state_root` | `~/.tkn/azure_blob_note/state/<source-id>` | 同期の基準、実行記録、ログを保存する領域です。 |
+| `notes_root` | `null` | 画像ノートの保存先です。`null` の場合は `<data_root>/notes` になります。 |
+| `azure.account_url` | `null` | ストレージ アカウントの HTTPS エンドポイントです。パスやクエリは含めません。 |
+| `azure.container` | `null` | 既存のコンテナーの名前です。Azure に接続するコマンドで必須です。 |
+| `azure.prefix` | 空 | コンテナー内の、同期の対象とする相対フォルダーです。 |
+| `azure.auth` | `azure_cli` | `azure_cli` または `managed_identity` です。 |
+| `azure.managed_identity_client_id` | `null` | ユーザー割り当てマネージド ID を使う場合のクライアント ID です。 |
+| `azure.timeout_seconds` | `60` | 正の秒数です。サーバー、ソケット、Azure CLI による認証のそれぞれに適用します。1回の実行全体の制限時間ではありません。 |
+| `delivery.url_base` | `null` | 設定したプレフィックスに対応する配信 URL です。 |
+| `delivery.cache_control` | `null` | アップロード時に設定する Cache-Control です。`null` の場合は、既存の blob の設定を保ちます。 |
+| `conversion.enabled` | `true` | 静止画の JPEG と PNG を WebP に変換します。 |
+| `conversion.format` | `webp` | 変換先の形式です。`webp` だけに対応しています。 |
+| `conversion.quality` | `82` | 0 から 100 の整数です。 |
+| `conversion.lossless` | `false` | 可逆圧縮の WebP で出力します。 |
+| `conversion.strip_metadata` | `true` | 変換後の画像から EXIF、XMP、ICC のメタデータを除きます。 |
 
-The converter applies EXIF orientation before encoding. It preserves transparency.
-Animated PNGs pass through without conversion. GIF, APNG, AVIF, BMP, ICO, SVG,
-TIFF and existing WebP files pass through unchanged; extension matching is
-case-insensitive. Original captures preserve every byte even when metadata is
-removed from derivatives. Conversion recipes fingerprint the options, Pillow
-version, and WebP library version. A format change that would rename an existing
-release stops; import a separately named asset instead.
+`data_root` と `state_root` の省略または `null` は、source ID ごとの既定値を使います。
+`notes_root: null` は、解決済みの `data_root` の下にある `notes` です。
+旧形式から手動で書き直す際、既存のデータを使い続ける場合は従来の保存先を明示します。
+設定の読み込みは、データの移動や設定ファイルの書き換えを行いません。
 
-## Azure scope and URLs
+### 1.5. 画像の変換
 
-For `prefix: collection`, release `photos/example.webp` maps to blob
-`collection/photos/example.webp`. The prefix boundary includes a slash; listing
-`collection` never incorporates `collection-other`.
+- 変換の対象は、静止画の JPEG と PNG です。
+- アニメーション PNG は変換せずにコピーします。
+- GIF、APNG、AVIF、BMP、ICO、SVG、TIFF、および既存の WebP は、変更せずにコピーします。拡張子は大文字と小文字を区別せずに判定します。
+- エンコードの前に、EXIF の向きの情報を画像に適用します。透過は保持します。
+- `conversion.strip_metadata` で変換後の画像からメタデータを除いた場合も、原本はすべてのバイトを保持します。
+- 変換の条件は、変換の設定、Pillow のバージョン、WebP ライブラリのバージョンから計算した指紋として記録します。この指紋が変わると、`build` は公開用画像を作り直します。
+- 変換の有無が変わり、既存の公開用画像の拡張子が変わる場合、`build` は停止します。別の名前で取り込み直します。
 
-`delivery.url_base` maps directly to the configured scope. For example,
-`https://img.example.com/collection` produces
-`https://img.example.com/collection/photos/example.webp`.
-This setting does not prove that the URL is reachable or public.
-Without a custom base, `url` uses the native blob URL, which can require authentication.
-URL path components are percent-encoded. SAS credentials are never written to notes.
+## 2. Azure の範囲と URL
 
-The CLI leaves container ACLs unchanged. A custom delivery base, the `$web`
-container, anonymous container access, or an ACL that cannot be inspected requires
-confirmation before a changed upload. In particular, a private ACL on `$web`
-does not make its static-website endpoint private.
-See [Azure static website access](https://learn.microsoft.com/azure/storage/blobs/storage-blob-static-website#impact-of-setting-the-access-level-on-the-web-container).
+### 2.1. blob 名への対応
 
-## Asset and note identity
+`prefix: collection` の場合、公開用画像 `photos/example.webp` は blob `collection/photos/example.webp` に対応します。
+プレフィックスの境界にはスラッシュを含みます。
+`collection` を対象にしても、`collection-other` は含まれません。
 
-Catalog records at `catalog/<asset_id>.json` carry `schema_version`, a stable
-asset ID, a separate note ID, relative release/note paths, timestamps, source
-capture details, and the current release hash/recipe. Record timestamps use UTC
-with explicit offsets. Human-readable titles are not identity keys.
+### 2.2. ノートに書き込む URL
 
-Sources are captured under `originals/<sha256>/<original-filename>`.
-SHA-256 identifies bytes; an asset ID identifies the managed image independently
-of its filename. Original objects are not edited. Different content colliding at
-one release path is refused on import.
+`delivery.url_base` は、設定した範囲にそのまま対応します。
+たとえば `https://img.example.com/collection` を設定すると、URL は `https://img.example.com/collection/photos/example.webp` になります。
 
-Metadata ownership:
+- この設定は、URL に到達できることや、公開されていることを保証しません。
+- 未設定の場合、ノートの `url` には blob 本来の URL を書き込みます。この URL へのアクセスには、認証が必要な場合があります。
+- URL のパス部分は、パーセント エンコードします。
+- SAS の認証情報をノートに書き込むことはありません。
 
-| Owner | Fields/content |
+### 2.3. 公開範囲の確認
+
+CLI は、コンテナーのアクセス レベルを変更しません。
+次のいずれかに当てはまる場合、変更を伴うアップロードの前に確認を求めます。
+
+- `delivery.url_base` を設定している。
+- コンテナーが `$web` である。
+- コンテナーに匿名アクセスが設定されている。
+- コンテナーのアクセス レベルを確認できない。
+
+`$web` コンテナーのアクセス レベルを非公開にしても、静的 Web サイトのエンドポイントは非公開になりません。
+詳しくは [Azure Storage の静的 Web サイトにおけるアクセス レベルの影響](https://learn.microsoft.com/azure/storage/blobs/storage-blob-static-website#impact-of-setting-the-access-level-on-the-web-container)を参照します。
+
+## 3. アセットとノートの識別
+
+### 3.1. カタログと原本
+
+カタログの記録は `catalog/<asset_id>.json` に保存します。
+記録には、`schema_version`、アセット ID、ノート ID、公開用画像とノートの相対パス、作成と更新の日時、原本の情報、現在の公開用画像のハッシュ値と変換の条件が含まれます。
+日時は、オフセットを明示した UTC で記録します。
+人が読むためのタイトルは、識別には使いません。
+
+原本は `originals/<sha256>/<元のファイル名>` に保存します。
+SHA-256 はバイト列を識別し、アセット ID は管理対象の画像をファイル名から独立して識別します。
+保存した原本は編集しません。
+内容の異なる画像が、同じ公開用画像のパスに重なる取り込みは拒否します。
+
+### 3.2. ノートの項目の担当
+
+| 担当 | 項目・内容 |
 | --- | --- |
-| Human / Obsidian | `type`, `title`, `category`, `description`, `tags`, `nouns`, `domains`, `projects`, unknown properties, body outside generated markers |
-| CLI | `schemaVersion`, `assetId`, `noteId`, `localPath`, `releaseRef`, `sourceAvailable`, `sourceRef`, `originalRef`, `sourceSha256`, `sha256`, `bytes`, `blobName`, `blobUrl`, `url`, `cover`, `updated`, `syncStatus` |
+| 利用者（Obsidian で編集） | `type`、`title`、`category`、`description`、`tags`、`nouns`、`domains`、`projects`、独自に追加したプロパティ、自動生成ブロックの外の本文 |
+| CLI | `schemaVersion`、`assetId`、`noteId`、`localPath`、`releaseRef`、`sourceAvailable`、`sourceRef`、`originalRef`、`sourceSha256`、`sha256`、`bytes`、`blobName`、`blobUrl`、`url`、`cover`、`updated`、`syncStatus` |
 
-Generated Frontmatter is flat. Unknown user fields are not flattened or discarded.
-Fresh notes default to `type: image`. Operations use `syncStatus`, `url`,
-`releaseRef` and catalog timestamps.
+- CLI が書き込む Frontmatter は、入れ子のない平坦な構造です。利用者が追加したプロパティは、平坦化も削除もしません。
+- 新しく作成するノートの `type` は `image` です。
+- 新しく作成するノートは、`title` に拡張子を除いたファイル名、`category` に公開用画像の親フォルダーの相対パスを設定します。
 
-The generated block is bounded by `azure-blob-note:begin` and
-`azure-blob-note:end` HTML comments. Refresh replaces only that block.
-Unmarked user bodies are retained and receive a new block. Duplicate note IDs,
-a different asset at the expected note path, unsupported note schemas, and
-malformed markers stop the refresh. Notes renamed within `notes_root` are found
-through their IDs; moving them outside that root requires explicit configuration
-or relocation.
+### 3.3. 自動生成ブロック
 
-`syncStatus: synced` records the last completed transfer; it is not a live
-assertion about remote state. Use `status --remote` or `verify --remote` for that.
-Imported remote blobs without original captures have `sourceAvailable: false`. Downloading a transformed image does not recreate its
-preconversion original.
+自動生成ブロックは、HTML コメント `azure-blob-note:begin` と `azure-blob-note:end` で囲んだ範囲です。
+ノートの更新は、このブロックだけを置き換えます。
+ブロックのない本文は保持し、末尾に新しいブロックを追加します。
 
-## Synchronization and conflict handling
+次の場合、ノートの更新は停止します。
 
-Each data-root/target scope has a local baseline containing an asset ID, relative blob name,
-last synchronized SHA-256, ETag, optional Azure version ID, and synchronization time.
-ETags detect remote revision changes; they are not content hashes.
-Remote metadata hashes are not trusted as proof of equality. Untracked or changed
-remote revisions are streamed and hashed before adoption.
+- 同じノート ID またはアセット ID を持つノートが複数ある。
+- ノートを作成する予定のパスに、別のアセットのノートがある。
+- ノートの `schemaVersion` に対応していない。
+- ブロックの開始と終了のコメントが壊れている。
 
-- Equal bytes are adopted without another upload.
-- Local-only changes can be pushed when the remote baseline is unchanged.
-- Remote-only changes can be pulled when local bytes still match the baseline.
-- Independently changed/untracked different bytes cause a conflict.
-- `--overwrite` selects the command's direction for explicit conflict resolution.
-  Changed replacements require `--yes` in noninteractive use.
-- Updates use an ETag precondition; new uploads use non-overwriting creation.
-  A competing write causes a conflict instead of last-writer-wins behavior.
-- Pull performs an ETag-conditional download, verifies its bytes, archives the
-  prior local release, then commits the new local file.
-- Missing files are not propagated as deletions.
+`notes_root` の中で名前を変更または移動したノートは、ID で見つけます。
+`notes_root` の外へ移動する場合は、設定を変更するか、ノートを戻す必要があります。
 
-Windows-reserved names, traversal, absolute paths, backslashes in blob names,
-trailing dots/spaces, linked managed paths, and case-colliding remote paths are
-rejected. The CLI does not silently rename such blobs.
+### 3.4. `syncStatus` と `sourceAvailable`
 
-## Provenance, failures and backup
+`syncStatus: synced` は、最後に完了した転送の記録です。
+現在の Azure の状態を表すものではありません。
+現在の状態は `status --remote` または `verify --remote` で確認します。
 
-Each real mutating operation writes a durable incremental journal in
-`data/provenance/<run_id>.json`, a run report under `state/runs`, and a UTF-8 log
-under `state/logs`. The journal links source/release entities, tool version,
-effective configuration fingerprint, operations, hashes, and timestamps.
-Preparation records are persisted before local release replacement.
-Each data root has an OS-backed operation lock.
+原本を持たないアセットは `sourceAvailable: false` になります。
+これは、`pull` で Azure から新しく取り込んだ画像と、`pull` で内容を置き換えた既存のアセットが該当します。
+変換済みの画像をダウンロードしても、変換前の原本は復元されません。
 
-These are structured application records, not RDF documents or a general graph
-index. They provide an export boundary for future
-[PROV-O Entity, Activity and Agent relationships](https://www.w3.org/TR/prov-o/).
+## 4. 同期と競合の扱い
 
-Completed file writes use a sibling temporary file and atomic installation.
-An entire multi-file operation can still be interrupted. Failed/running journals
-remain inspectable. `recover` restores a prepared catalog/note commit only when
-the exact journaled release and original hashes are present; it does not invent
-missing bytes or perform cloud writes. Then rerun the relevant operation.
-If note parsing still fails, fix or preserve that note before retrying.
+### 4.1. 同期の基準
 
-Back up the complete data and state roots plus an external notes root.
-The library's history/original captures do not replace an independent backup.
-Deletion/retention automation is not provided. Application-owned dry runs create
-none of these records. No AI service is called by this application.
+データ保存領域と同期先（アカウント、コンテナー、プレフィックス）の組み合わせごとに、同期の基準を `state_root` に保存します。
+基準には、アセット ID、blob の相対名、最後に同期した内容の SHA-256、ETag、Azure のバージョン ID（ある場合）、同期した日時が含まれます。
+
+ETag は、Azure 側の変更の検出に使います。内容のハッシュ値ではありません。
+Azure 側のメタデータに記録されたハッシュ値は、内容が同じである根拠として扱いません。
+同期の記録がない blob や、変更された blob は、内容を読み取ってハッシュ値を計算してから扱います。
+
+### 4.2. 判定規則
+
+| 状況 | 動作 |
+| --- | --- |
+| 手元と Azure の内容が同じ | 転送せず、同期済みとして記録します。 |
+| 手元だけが変わり、Azure 側は基準から変わっていない | `push` でアップロードできます。 |
+| Azure 側だけが変わり、手元は基準と一致している | `pull` でダウンロードできます。 |
+| 両方が変わっている、または同期の記録がない転送先に異なる内容がある | 競合として停止します。 |
+| 片方にファイルがない | 削除としては扱いません。もう一方を削除することはありません。 |
+
+- `--overwrite` は、コマンドの方向に沿って競合を解決します。内容を置き換える場合、対話できない環境では `--yes` も必要です。
+- 更新には ETag による条件を付け、新規のアップロードは既存の blob を上書きしない方法で行います。同時に別の書き込みがあった場合は、後から書いた側が勝つのではなく、競合として停止します。
+- `pull` は、ETag による条件付きでダウンロードし、取得したバイト列を検証し、それまでの手元の公開用画像を `history` に退避してから、新しいファイルを書き込みます。
+
+### 4.3. 拒否する名前
+
+次の名前やパスは拒否します。
+CLI が、これらの blob の名前を自動で変更することはありません。
+
+- Windows の予約名
+- 上位フォルダーへの参照（`..`）、絶対パス
+- バックスラッシュを含む blob 名
+- 末尾がドットまたは空白の名前
+- リンク（シンボリック リンクやジャンクション）を経由する管理対象のパス
+- 大文字と小文字だけが異なる、Azure 側のパス
+
+## 5. 処理の記録、失敗、バックアップ
+
+### 5.1. 実行ごとの記録
+
+データを変更する実行は、次の3つを作成します。
+
+| 保存先 | 内容 |
+| --- | --- |
+| `data/provenance/<run_id>.json` | 処理の進行に合わせて追記する記録です。原本と公開用画像の対応、ツールのバージョン、source ID、選択した source の設定の指紋、操作、ハッシュ値、日時を含みます。 |
+| `<state_root>/runs/<run_id>.json` | 実行の報告です。 |
+| `<state_root>/logs/<run_id>.log` | UTF-8 のログです。 |
+
+- 公開用画像を置き換える前に、準備した内容を記録します。
+- データ保存領域ごとに、OS のロックで同時実行を防ぎます。別の実行が進行中の場合、後から始めたコマンドは停止します。
+- `--dry-run` では、これらの記録を作成しません。
+
+これらは、このツールの構造化した記録です。
+RDF 文書や、汎用のグラフ索引ではありません。
+将来、[PROV-O の Entity、Activity、Agent の関係](https://www.w3.org/TR/prov-o/)として書き出すための境界として設計しています。
+
+### 5.2. 中断と復旧
+
+1つのファイルの書き込みは、同じフォルダーの一時ファイルに書いてから置き換える方法で行います。
+複数のファイルを扱う1回の実行全体は、途中で中断することがあります。
+失敗した記録と、実行中のまま残った記録は、後から確認できます。
+
+`recover` は、記録された公開用画像と原本のハッシュ値が、手元のファイルと正確に一致する場合に限り、カタログとノートへの反映を完了させます。
+存在しないバイト列を補うことや、Azure への書き込みは行いません。
+復旧後に、失敗したコマンドをもう一度実行します。
+ノートの読み取りが引き続き失敗する場合は、そのノートを修正するか退避してから再実行します。
+
+### 5.3. バックアップ
+
+- 各 source の `data_root` と `state_root` の全体、および外部に置いた `notes_root` をバックアップします。
+- `history` と `originals` は、独立したバックアップの代わりにはなりません。
+- 削除や保存期間の管理は自動化していません。
+- このツールは、生成 AI のサービスを呼び出しません。

@@ -1,13 +1,22 @@
-# Changelog
+# 変更履歴
+
+## 0.2.0 — 2026-10-04
+
+- config.yaml の `sources.<source-id>` で、複数のコンテナーを管理できるようにしました。
+- 保存先、Azure 接続、delivery、conversion を source 内に移し、データと状態の既定保存先を source ごとに分けました。
+- `--source <id>` を追加しました。source が1つなら自動選択し、複数なら指定を必須にします。
+- 同じコンテナーの重複登録と、source 間で重なる保存先を拒否するようにしました。
+- 設定スキーマを 2.0.0 にしました。旧形式の読み込みは保存先と既存の同期記録を保持し、ファイルを書き換えません。
+
 
 ## 0.1.0 — 2026-10-04
 
-- Provide the installable `tkn-azure-blob-note` CLI for image and note management.
-- Use versioned YAML configuration and `~/.tkn/azure_blob_note/` application storage.
-- Preserve immutable original captures and structured provenance.
-- Add configurable WebP preparation, exact-byte downloads, and ETag-aware push/pull.
-- Keep Obsidian descriptions, relationships, custom Frontmatter and body text.
-- Separate asset/note identity from titles, paths, domains and public access.
-- Add read-only previews, integrity checks and interruption recovery.
-- Load validated YAML configuration and retain image inputs after import.
-- Keep transfers explicit and preserve blob names independently of note metadata.
+- 画像とノートを管理する、インストール可能な CLI `tkn-azure-blob-note` を提供しました。
+- バージョン付きの YAML 設定と、`~/.tkn/azure_blob_note/` のアプリケーション保存領域を採用しました。
+- 取り込んだ原本を変更せずに保存し、処理の来歴を構造化して記録するようにしました。
+- 設定可能な WebP 変換、バイト列をそのまま取得するダウンロード、ETag を考慮した push / pull を追加しました。
+- Obsidian で編集した説明、関連、独自の Frontmatter、本文を保持するようにしました。
+- アセットとノートの識別子を、タイトル、パス、ドメイン、公開アクセスの有無から分離しました。
+- 何も変更しないプレビュー、整合性の検査、中断からの復旧を追加しました。
+- YAML 設定を検証して読み込み、取り込み後も入力画像を残すようにしました。
+- 転送は明示的な操作でのみ行い、blob 名をノートのメタデータから独立して保つようにしました。

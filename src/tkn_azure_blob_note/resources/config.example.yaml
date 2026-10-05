@@ -1,23 +1,28 @@
 # Merge order: defaults, user, CWD, --config, CLI options.
-schema_version: "1.0.0"
-data_root: ~/.tkn/azure_blob_note/data
-state_root: ~/.tkn/azure_blob_note/state
-# null uses <data_root>/notes; alternatively choose a directory inside your Vault.
-notes_root: null
-azure:
-  account_url: null
-  container: null
-  prefix: ""
-  auth: azure_cli
-  managed_identity_client_id: null
-  timeout_seconds: 60
-delivery:
-  # Generates links only. Does not provision DNS/TLS or change access permissions.
-  url_base: null
-  cache_control: null
-conversion:
-  enabled: true
-  format: webp
-  quality: 82
-  lossless: false
-  strip_metadata: true
+# A sources mapping replaces the preceding layer's entire sources mapping.
+schema_version: "2.0.0"
+sources:
+  images:
+    # null uses ~/.tkn/azure_blob_note/data/<source-id>
+    data_root: null
+    # null uses ~/.tkn/azure_blob_note/state/<source-id>
+    state_root: null
+    # null uses <data_root>/notes; or choose a directory inside your Vault.
+    notes_root: null
+    azure:
+      account_url: null
+      container: null
+      prefix: ""
+      auth: azure_cli
+      managed_identity_client_id: null
+      timeout_seconds: 60
+    delivery:
+      # Generates links only. Does not provision DNS/TLS or change access permissions.
+      url_base: null
+      cache_control: null
+    conversion:
+      enabled: true
+      format: webp
+      quality: 82
+      lossless: false
+      strip_metadata: true

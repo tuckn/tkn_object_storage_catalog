@@ -64,6 +64,11 @@ def setup_logging(quiet: bool, verbose: bool) -> None:
 
 def common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
+        "--source",
+        default=argparse.SUPPRESS,
+        help="source ID; required for data commands when multiple sources are configured",
+    )
+    parser.add_argument(
         "--config",
         type=Path,
         default=argparse.SUPPRESS,
@@ -122,7 +127,7 @@ def parser() -> argparse.ArgumentParser:
         "--convert",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="override conversion.enabled",
+        help="override the selected source conversion.enabled",
     )
     mutating(imp)
     build = sub.add_parser(
@@ -219,25 +224,35 @@ def execute(args: argparse.Namespace) -> tuple[Any, int]:
             dry_run=args.dry_run,
         ), 0
     overrides = config_overrides(args)
-    config = load_config(getattr(args, "config", None), overrides)
+    config = load_config(
+        getattr(args, "config", None), overrides, source=getattr(args, "source", None)
+    )
     if args.command == "config":
         LOGGER.info("Showing resolved configuration")
         if args.json:
             return config.report(), 0
         print_config(config.report())
         return None, 0
+    config = config.select_source()
     remote = args.command in {"push", "pull"} or getattr(args, "remote", False)
     blobs = AzureBlobs(config) if remote else None
     try:
         if args.command == "status":
-            return {"items": status(config, blobs=blobs)}, 0
+            return {"source_id": config.source_id, "items": status(config, blobs=blobs)}, 0
         if args.command == "verify":
             items = verify(config, blobs=blobs)
-            return {"items": items, "valid": not any(i["status"] == "failed" for i in items)}, (
-                2 if any(i["status"] == "failed" for i in items) else 0
-            )
+            return {
+                "source_id": config.source_id,
+                "items": items,
+                "valid": not any(i["status"] == "failed" for i in items),
+            }, (2 if any(i["status"] == "failed" for i in items) else 0)
         with Operation(config, args.command, args.dry_run) as operation:
-            LOGGER.info("%s%s", "Previewing " if args.dry_run else "Running ", args.command)
+            LOGGER.info(
+                "%s%s (source %s)",
+                "Previewing " if args.dry_run else "Running ",
+                args.command,
+                config.source_id,
+            )
             if args.command == "import":
                 output: Any = import_images(config, args.paths, operation, name=args.name)
             elif args.command == "build":
@@ -269,6 +284,7 @@ def execute(args: argparse.Namespace) -> tuple[Any, int]:
                 output = recover(config, operation)
             return {
                 "command": args.command,
+                "source_id": config.source_id,
                 "dry_run": args.dry_run,
                 "run_id": None if args.dry_run else operation.run_id,
                 "result": output,

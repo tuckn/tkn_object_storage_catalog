@@ -212,7 +212,8 @@ class Operation(AbstractContextManager["Operation"]):
             "started_at": now(),
             "status": "running",
             "events": [],
-            "config_fingerprint": fingerprint(config.values),
+            "source_id": config.select_source().source_id,
+            "config_fingerprint": fingerprint(config.source_values),
         }
 
     def __enter__(self) -> Operation:

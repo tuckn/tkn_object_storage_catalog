@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from importlib.resources import files
 from pathlib import Path
 from typing import Any, cast
@@ -12,9 +12,11 @@ from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
 from .errors import AppError, ConflictError
-from .io import SCHEMA_VERSION, atomic_bytes, check_schema, now, safe_relative, sha256
+from .io import atomic_bytes, check_schema, now, safe_relative, sha256
 
 APPLICATION_ID = "azure_blob_note"
+CONFIG_SCHEMA_VERSION = "2.0.0"
+DEFAULT_SOURCE_ID = "images"
 
 
 def resource(name: str) -> str:
@@ -29,7 +31,7 @@ def flatten(value: dict[str, Any], prefix: str = "") -> dict[str, Any]:
     output = {}
     for key, item in value.items():
         name = f"{prefix}.{key}" if prefix else key
-        if isinstance(item, dict):
+        if isinstance(item, dict) and item:
             output.update(flatten(item, name))
         else:
             output[name] = item
@@ -47,22 +49,19 @@ def parse_yaml(text: str, label: str) -> dict[str, Any]:
 
 
 def validate_part(value: dict[str, Any], defaults: dict[str, Any], label: str) -> None:
-    check_schema(value, label)
-    allowed = flatten(defaults)
     for key, item in value.items():
         if key not in defaults:
             raise AppError(f"{label}: unknown setting {key}.")
-        if isinstance(defaults[key], dict) and not isinstance(item, dict):
-            raise AppError(f"{label}: {key} must be a mapping.")
-    for key, item in flatten(value).items():
-        if key not in allowed:
-            raise AppError(f"{label}: unknown setting {key}.")
-        default = allowed[key]
-        if default is not None and type(item) is not type(default):
+        default = defaults[key]
+        if isinstance(default, dict):
+            if not isinstance(item, dict):
+                raise AppError(f"{label}: {key} must be a mapping.")
+            validate_part(item, default, f"{label}.{key}")
+        elif default is not None and type(item) is not type(default):
             raise AppError(f"{label}: wrong type for {key}.")
-        if default is None and item is not None and not isinstance(item, str):
+        elif default is None and item is not None and not isinstance(item, str):
             raise AppError(f"{label}: {key} must be a string or null.")
-        if key.endswith("_root") and item == "":
+        if isinstance(key, str) and key.endswith("_root") and item == "":
             raise AppError(f"{label}: {key} must not be empty.")
     if "conversion" in value:
         c = value["conversion"]
@@ -104,50 +103,166 @@ def validate_part(value: dict[str, Any], defaults: dict[str, Any], label: str) -
 
 def merge(target: dict[str, Any], source: dict[str, Any]) -> None:
     for key, value in source.items():
-        if key == "schema_version":
-            continue
         if isinstance(value, dict):
             merge(target[key], value)
         else:
             target[key] = value
 
 
+def validate_source_id(source_id: Any, label: str) -> None:
+    if not isinstance(source_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", source_id):
+        raise AppError(f"{label}: source IDs must use 1-64 lowercase letters, digits, '_' or '-'.")
+    safe_relative(source_id)
+
+
+def normalize_layer(
+    value: dict[str, Any], defaults: dict[str, Any], label: str
+) -> tuple[dict[str, Any], bool]:
+    version = value.get("schema_version")
+    if not isinstance(version, str) or not re.fullmatch(r"\d+\.\d+\.\d+", version):
+        raise AppError(f"{label}: schema_version must be a quoted MAJOR.MINOR.PATCH string.")
+    major, minor, _ = map(int, version.split("."))
+    if (major, minor) == (1, 0):
+        check_schema(value, label)
+        legacy_defaults = {
+            "schema_version": "1.0.0",
+            **defaults,
+            "data_root": str(user_root() / "data"),
+            "state_root": str(user_root() / "state"),
+        }
+        validate_part(value, legacy_defaults, label)
+        # Preserve existing storage locations; loading never moves data or rewrites YAML.
+        legacy = {key: item for key, item in value.items() if key != "schema_version"}
+        return {"sources": {DEFAULT_SOURCE_ID: legacy}}, True
+    if (major, minor) != (2, 0):
+        raise AppError(f"{label}: unsupported config schema {version}; supported schema is 2.0.x.")
+    for key in value:
+        if key not in {"schema_version", "sources"}:
+            raise AppError(f"{label}: move {key} into sources.<source-id>.{key}.")
+    if "sources" not in value:
+        return {}, False
+    sources = value["sources"]
+    if not isinstance(sources, dict):
+        raise AppError(f"{label}: sources must be a mapping.")
+    for source_id, settings in sources.items():
+        validate_source_id(source_id, label)
+        if not isinstance(settings, dict):
+            raise AppError(f"{label}: sources.{source_id} must be a mapping.")
+        validate_part(settings, defaults, f"{label}.sources.{source_id}")
+    return {"sources": deepcopy(sources)}, False
+
+
+def resolve_source(settings: dict[str, Any], source_id: str, cwd: Path) -> None:
+    for key, fallback in (
+        ("data_root", user_root() / "data" / source_id),
+        ("state_root", user_root() / "state" / source_id),
+        ("notes_root", Path(settings["data_root"] or user_root() / "data" / source_id) / "notes"),
+    ):
+        path = Path(settings[key]) if settings[key] is not None else fallback
+        path = path.expanduser()
+        settings[key] = str((path if path.is_absolute() else cwd / path).resolve())
+    settings["azure"]["prefix"] = settings["azure"]["prefix"].rstrip("/")
+    for group, key in (("azure", "account_url"), ("delivery", "url_base")):
+        if settings[group][key]:
+            settings[group][key] = settings[group][key].rstrip("/")
+    data, state, notes = (Path(settings[k]) for k in ("data_root", "state_root", "notes_root"))
+    if overlaps(data, state):
+        raise AppError(f"sources.{source_id}: data_root and state_root must be separate trees.")
+    for reserved in ("staging", "originals", "releases", "catalog", "provenance", "history"):
+        if overlaps(notes, data / reserved):
+            raise AppError(f"sources.{source_id}: notes_root overlaps managed image/catalog trees.")
+    if overlaps(notes, state):
+        raise AppError(f"sources.{source_id}: notes_root must not overlap state_root.")
+
+
+def overlaps(first: Path, second: Path) -> bool:
+    return first == second or first.is_relative_to(second) or second.is_relative_to(first)
+
+
+def validate_isolation(sources: dict[str, Any]) -> None:
+    previous: list[tuple[str, dict[str, Any]]] = []
+    containers: dict[tuple[str, str], str] = {}
+    for source_id, settings in sources.items():
+        azure = settings["azure"]
+        if azure["account_url"] and azure["container"]:
+            target = (azure["account_url"].lower(), azure["container"])
+            if target in containers:
+                raise AppError(
+                    f"sources.{source_id} and sources.{containers[target]} use the same container; "
+                    "one container must belong to one source, even with different prefixes."
+                )
+            containers[target] = source_id
+        for other_id, other in previous:
+            for key in ("data_root", "state_root", "notes_root"):
+                for other_key in ("data_root", "state_root", "notes_root"):
+                    if overlaps(Path(settings[key]), Path(other[other_key])):
+                        raise AppError(
+                            f"sources.{source_id}.{key} overlaps sources.{other_id}.{other_key}; "
+                            "sources must use separate directory trees."
+                        )
+        previous.append((source_id, settings))
+
+
 @dataclass(frozen=True)
 class Config:
     values: dict[str, Any]
-    sources: list[dict[str, Any]]
+    loaded_sources: list[dict[str, Any]]
     origins: dict[str, str]
+    source_id: str | None = None
+
+    @property
+    def sources(self) -> dict[str, Any]:
+        return cast(dict[str, Any], self.values["sources"])
+
+    def select_source(self, source_id: str | None = None) -> Config:
+        selected = source_id if source_id is not None else self.source_id
+        if selected is None:
+            if len(self.sources) != 1:
+                raise AppError("Specify --source <id> when multiple or no sources are configured.")
+            selected = next(iter(self.sources))
+        if selected not in self.sources:
+            raise AppError(
+                f"Unknown source {selected!r}; available sources: {', '.join(self.sources)}."
+            )
+        return replace(self, source_id=selected)
+
+    @property
+    def source_values(self) -> dict[str, Any]:
+        selected = self.select_source().source_id
+        assert selected is not None
+        return cast(dict[str, Any], self.sources[selected])
 
     @property
     def data_root(self) -> Path:
-        return Path(self.values["data_root"])
+        return Path(self.source_values["data_root"])
 
     @property
     def state_root(self) -> Path:
-        return Path(self.values["state_root"])
+        return Path(self.source_values["state_root"])
 
     @property
     def notes_root(self) -> Path:
-        return Path(self.values["notes_root"])
+        return Path(self.source_values["notes_root"])
 
     @property
     def azure(self) -> dict[str, Any]:
-        return cast(dict[str, Any], self.values["azure"])
+        return cast(dict[str, Any], self.source_values["azure"])
 
     @property
     def conversion(self) -> dict[str, Any]:
-        return cast(dict[str, Any], self.values["conversion"])
+        return cast(dict[str, Any], self.source_values["conversion"])
 
     @property
     def delivery(self) -> dict[str, Any]:
-        return cast(dict[str, Any], self.values["delivery"])
+        return cast(dict[str, Any], self.source_values["delivery"])
 
     def report(self) -> dict[str, Any]:
         return {
             "config": self.values,
-            "sources": self.sources,
+            "loaded_sources": self.loaded_sources,
             "origins": self.origins,
-            "effective_schema_version": SCHEMA_VERSION,
+            "selected_source": self.source_id,
+            "effective_schema_version": CONFIG_SCHEMA_VERSION,
         }
 
 
@@ -157,59 +272,78 @@ def load_config(
     *,
     home: Path | None = None,
     cwd: Path | None = None,
+    source: str | None = None,
 ) -> Config:
     cwd = (cwd or Path.cwd()).resolve()
     home = home or user_root()
-    defaults = parse_yaml(resource("config.example.yaml"), "built-in")
-    validate_part(defaults, defaults, "built-in")
-    values = deepcopy(defaults)
-    origins = {key: "built-in" for key in flatten(defaults) if key != "schema_version"}
-    sources = [{"source": "built-in", "schema_version": SCHEMA_VERSION}]
+    packaged = parse_yaml(resource("config.example.yaml"), "built-in")
+    defaults = packaged["sources"][DEFAULT_SOURCE_ID]
+    normalize_layer(packaged, defaults, "built-in")
+    values = deepcopy(packaged)
+    origins = {key: "built-in" for key in flatten(values)}
+    loaded = [{"source": "built-in", "schema_version": CONFIG_SCHEMA_VERSION, "migrated": False}]
     candidates = [(home / "config.yaml", False), (cwd / ".tkn" / "config.yaml", False)]
     if explicit is not None:
         candidates.append((explicit.expanduser().resolve(), True))
+    legacy_active = False
     for path, required in candidates:
         if not path.exists():
             if required:
                 raise AppError(f"Explicit config not found: {path}")
             continue
-        value = parse_yaml(path.read_text(encoding="utf-8-sig"), str(path))
-        validate_part(value, defaults, str(path))
-        merge(values, value)
-        origins.update({key: str(path) for key in flatten(value) if key != "schema_version"})
-        sources.append({"source": str(path), "schema_version": value["schema_version"]})
+        raw = parse_yaml(path.read_text(encoding="utf-8-sig"), str(path))
+        layer, migrated = normalize_layer(raw, defaults, str(path))
+        if "sources" in layer:
+            if migrated:
+                if not legacy_active:
+                    values["sources"] = {DEFAULT_SOURCE_ID: deepcopy(defaults)}
+                    values["sources"][DEFAULT_SOURCE_ID].update(
+                        data_root=str(user_root() / "data"),
+                        state_root=str(user_root() / "state"),
+                    )
+                    origins = {
+                        key: item for key, item in origins.items() if not key.startswith("sources")
+                    }
+                    origins.update(
+                        {key: "built-in" for key in flatten(values["sources"], "sources")}
+                    )
+                settings = layer["sources"][DEFAULT_SOURCE_ID]
+                merge(values["sources"][DEFAULT_SOURCE_ID], settings)
+                origins.update(
+                    {key: str(path) for key in flatten(settings, f"sources.{DEFAULT_SOURCE_ID}")}
+                )
+                legacy_active = True
+            else:
+                # Match excel_note: the complete sources mapping replaces the preceding one.
+                values["sources"] = {}
+                origins = {
+                    key: item for key, item in origins.items() if not key.startswith("sources")
+                }
+                for source_id, settings in layer["sources"].items():
+                    effective = deepcopy(defaults)
+                    merge(effective, settings)
+                    values["sources"][source_id] = effective
+                    prefix = f"sources.{source_id}"
+                    origins.update({key: "built-in" for key in flatten(defaults, prefix)})
+                    origins.update({key: str(path) for key in flatten(settings, prefix)})
+                if not layer["sources"]:
+                    origins["sources"] = str(path)
+                legacy_active = False
+        loaded.append(
+            {"source": str(path), "schema_version": raw["schema_version"], "migrated": migrated}
+        )
+    config = Config(values, loaded, origins)
+    if source is not None or len(config.sources) == 1:
+        config = config.select_source(source)
     if overrides:
-        partial = {"schema_version": SCHEMA_VERSION, **overrides}
-        validate_part(partial, defaults, "CLI")
-        merge(values, partial)
-        origins.update({key: "CLI" for key in flatten(overrides)})
-    for key in ("data_root", "state_root", "notes_root"):
-        raw = values[key]
-        if raw is None:
-            raw = str(Path(values["data_root"]) / "notes")
-        path = Path(raw).expanduser()
-        values[key] = str((path if path.is_absolute() else cwd / path).resolve())
-    values["azure"]["prefix"] = values["azure"]["prefix"].rstrip("/")
-    for group, key in (("azure", "account_url"), ("delivery", "url_base")):
-        if values[group][key]:
-            values[group][key] = values[group][key].rstrip("/")
-    data, state, notes = (Path(values[k]) for k in ("data_root", "state_root", "notes_root"))
-    if data == state or data.is_relative_to(state) or state.is_relative_to(data):
-        raise AppError("data_root and state_root must be separate directory trees.")
-    for reserved in (
-        "staging",
-        "originals",
-        "releases",
-        "catalog",
-        "provenance",
-        "history",
-    ):
-        root = data / reserved
-        if notes == root or notes.is_relative_to(root) or root.is_relative_to(notes):
-            raise AppError("notes_root must not overlap the managed image/catalog directories.")
-    if notes == state or notes.is_relative_to(state) or state.is_relative_to(notes):
-        raise AppError("notes_root must not overlap state_root.")
-    return Config(values, sources, origins)
+        validate_part(overrides, defaults, "CLI")
+        config = config.select_source()
+        merge(config.source_values, overrides)
+        origins.update({key: "CLI" for key in flatten(overrides, f"sources.{config.source_id}")})
+    for source_id, settings in config.sources.items():
+        resolve_source(settings, source_id, cwd)
+    validate_isolation(config.sources)
+    return config
 
 
 def init_config(path: Path, *, force: bool = False, dry_run: bool = False) -> dict[str, Any]:

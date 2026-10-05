@@ -119,7 +119,7 @@ def test_different_libraries_do_not_share_baselines(cfg, asset):
     first = Catalog(cfg)
     first.set_baseline(asset, {"etag": "remote"})
     second_cfg = deepcopy(cfg)
-    second_cfg.values["data_root"] = str(cfg.data_root.parent / "other-library")
+    second_cfg.source_values["data_root"] = str(cfg.data_root.parent / "other-library")
     assert Catalog(second_cfg).baseline(asset) is None
 
 
