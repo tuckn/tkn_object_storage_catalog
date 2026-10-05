@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from tkn_azure_blob_note.catalog import Catalog, Operation
-from tkn_azure_blob_note.errors import AppError, ConflictError
-from tkn_azure_blob_note.io import atomic_bytes, copy_verified, safe_relative
-from tkn_azure_blob_note.recovery import recover
-from tkn_azure_blob_note.sync import verify
+from tkn_object_storage_catalog.catalog import Catalog, Operation
+from tkn_object_storage_catalog.errors import AppError, ConflictError
+from tkn_object_storage_catalog.io import atomic_bytes, copy_verified, safe_relative
+from tkn_object_storage_catalog.recovery import recover
+from tkn_object_storage_catalog.sync import verify
 
 
 @pytest.mark.parametrize(
@@ -31,7 +31,7 @@ def test_portable_path_protection(name):
 
 
 def test_atomic_replace_failure_preserves_previous_file(tmp_path, monkeypatch):
-    import tkn_azure_blob_note.io as io
+    import tkn_object_storage_catalog.io as io
 
     path = tmp_path / "file"
     path.write_bytes(b"previous")
@@ -57,7 +57,7 @@ def test_copy_verifies_collision(tmp_path):
 
 
 def test_prepared_commit_recovery(cfg, source, monkeypatch):
-    import tkn_azure_blob_note.images as images
+    import tkn_object_storage_catalog.images as images
 
     original_save = Catalog.save
 

@@ -7,15 +7,15 @@ import pytest
 from azure.core import MatchConditions
 from PIL import Image
 
-from tkn_azure_blob_note.azure import AzureBlobs
-from tkn_azure_blob_note.catalog import Catalog, Operation
-from tkn_azure_blob_note.cli import main
-from tkn_azure_blob_note.config import load_config
-from tkn_azure_blob_note.errors import AppError, ConflictError
-from tkn_azure_blob_note.images import import_images
-from tkn_azure_blob_note.io import atomic_bytes
-from tkn_azure_blob_note.notes import find_note
-from tkn_azure_blob_note.sync import push
+from tkn_object_storage_catalog.azure import AzureBlobs
+from tkn_object_storage_catalog.catalog import Catalog, Operation
+from tkn_object_storage_catalog.cli import main
+from tkn_object_storage_catalog.config import load_config
+from tkn_object_storage_catalog.errors import AppError, ConflictError
+from tkn_object_storage_catalog.images import import_images
+from tkn_object_storage_catalog.io import atomic_bytes
+from tkn_object_storage_catalog.notes import find_note
+from tkn_object_storage_catalog.sync import push
 
 
 def test_readonly_note_collision_preflight(cfg, source):
@@ -126,7 +126,7 @@ def test_different_libraries_do_not_share_baselines(cfg, asset):
 def test_future_note_schema_stops_push_preview(cfg, asset, blobs):
     path = find_note(cfg, asset)
     path.write_text(
-        path.read_text().replace("schemaVersion: 1.0.0", "schemaVersion: 3.0.0"), encoding="utf-8"
+        path.read_text().replace("schemaVersion: 2.0.0", "schemaVersion: 3.0.0"), encoding="utf-8"
     )
     with pytest.raises(AppError):
         with Operation(cfg, "push", True) as operation:

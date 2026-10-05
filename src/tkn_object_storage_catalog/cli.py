@@ -9,18 +9,19 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from azure.core.exceptions import AzureError, HttpResponseError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from . import __version__
-from .azure import AzureBlobs
 from .catalog import Operation
-from .config import flatten, init_config, load_config, user_root
+from .config import flatten, init_config, legacy_root, load_config, user_root
 from .errors import AppError
 from .images import build_images, import_images
 from .notes import refresh_notes
 from .recovery import recover
+from .storage import open_store
 from .sync import pull, push, status, verify
 
-LOGGER = logging.getLogger("tkn_azure_blob_note")
+LOGGER = logging.getLogger("tkn_object_storage_catalog")
 SUCCESS = 25
 logging.addLevelName(SUCCESS, "SUCCESS")
 
@@ -100,8 +101,8 @@ def mutating(parser: argparse.ArgumentParser) -> None:
 
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(
-        prog="tkn-azure-blob-note",
-        description="Preserve images, synchronize Azure blobs, and maintain Obsidian proxy notes.",
+        prog="tkn-object-storage-catalog",
+        description="Catalog images in Azure Blob Storage, AWS S3, and Cloudflare R2 with Obsidian metadata.",
     )
     root.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     common(root)
@@ -141,7 +142,7 @@ def parser() -> argparse.ArgumentParser:
     for command in ("push", "pull"):
         item = sub.add_parser(
             command,
-            help=("upload local releases" if command == "push" else "download exact blob bytes"),
+            help=("upload local releases" if command == "push" else "download exact object bytes"),
         )
         common(item)
         item.add_argument(
@@ -174,7 +175,7 @@ def parser() -> argparse.ArgumentParser:
         item.add_argument(
             "--remote",
             action="store_true",
-            help="also authenticate and read Azure; verify downloads bytes for hashing",
+            help="also authenticate and read the selected object storage; verify downloads bytes for hashing",
         )
     recovery = sub.add_parser(
         "recover", help="finish interrupted local commits whose exact prepared bytes exist"
@@ -218,6 +219,14 @@ def print_config(value: dict[str, Any]) -> None:
 
 def execute(args: argparse.Namespace) -> tuple[Any, int]:
     if args.command == "config" and args.config_command == "init":
+        if (
+            args.path is None
+            and not (user_root() / "config.yaml").exists()
+            and (legacy_root() / "config.yaml").exists()
+        ):
+            raise AppError(
+                "An existing Azure config is in use. Inspect it with config list; to create a new config, use config init --path and preserve existing data_root/state_root/notes_root explicitly."
+            )
         return init_config(
             (args.path or user_root() / "config.yaml").expanduser().resolve(),
             force=args.force,
@@ -235,7 +244,7 @@ def execute(args: argparse.Namespace) -> tuple[Any, int]:
         return None, 0
     config = config.select_source()
     remote = args.command in {"push", "pull"} or getattr(args, "remote", False)
-    blobs = AzureBlobs(config) if remote else None
+    blobs = open_store(config) if remote else None
     try:
         if args.command == "status":
             return {"source_id": config.source_id, "items": status(config, blobs=blobs)}, 0
@@ -324,6 +333,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         message = f"Azure request failed ({type(exc).__name__}). Check az login, data permissions, and network connectivity."
         if isinstance(exc, HttpResponseError) and exc.status_code in {409, 412}:
             message = "Azure changed during the operation. Inspect status --remote and retry after resolving the conflict."
+        LOGGER.error("%s", message)
+        print(json.dumps({"status": "failed", "error": message}))
+        return 3
+    except (BotoCoreError, ClientError) as exc:
+        # Do not render SDK exception text: it may contain endpoints or credentials.
+        message = "S3/R2 request failed. Check the selected profile/environment credentials, endpoint, region, permissions, and network connectivity."
+        if isinstance(exc, ClientError) and exc.response.get("ResponseMetadata", {}).get(
+            "HTTPStatusCode"
+        ) in {409, 412}:
+            message = "S3/R2 changed during the operation. Inspect status --remote and retry after resolving the conflict."
         LOGGER.error("%s", message)
         print(json.dumps({"status": "failed", "error": message}))
         return 3

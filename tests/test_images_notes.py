@@ -3,13 +3,13 @@ from __future__ import annotations
 import pytest
 from PIL import Image
 
-from tkn_azure_blob_note.catalog import Catalog, Operation
-from tkn_azure_blob_note.config import load_config
-from tkn_azure_blob_note.errors import AppError, ConflictError
-from tkn_azure_blob_note.images import build_images, import_images
-from tkn_azure_blob_note.io import sha256
-from tkn_azure_blob_note.notes import find_note, refresh_notes
-from tkn_azure_blob_note.sync import verify
+from tkn_object_storage_catalog.catalog import Catalog, Operation
+from tkn_object_storage_catalog.config import load_config
+from tkn_object_storage_catalog.errors import AppError, ConflictError
+from tkn_object_storage_catalog.images import build_images, import_images
+from tkn_object_storage_catalog.io import sha256
+from tkn_object_storage_catalog.notes import find_note, refresh_notes
+from tkn_object_storage_catalog.sync import verify
 
 
 def snapshot(root):
@@ -122,7 +122,7 @@ def test_colliding_inputs_preflight(cfg, source):
 
 def test_invalid_note_schema_preserved(cfg, asset):
     path = find_note(cfg, asset)
-    content = path.read_text().replace("schemaVersion: 1.0.0", "schemaVersion: 2.0.0")
+    content = path.read_text().replace("schemaVersion: 2.0.0", "schemaVersion: 3.0.0")
     path.write_text(content, encoding="utf-8")
     with pytest.raises(AppError):
         refresh_notes(cfg, [])

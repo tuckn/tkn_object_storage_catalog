@@ -6,10 +6,10 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from tkn_azure_blob_note.catalog import Catalog, Operation
-from tkn_azure_blob_note.config import load_config
-from tkn_azure_blob_note.errors import ConflictError
-from tkn_azure_blob_note.images import import_images
+from tkn_object_storage_catalog.catalog import Catalog, Operation
+from tkn_object_storage_catalog.config import load_config
+from tkn_object_storage_catalog.errors import ConflictError
+from tkn_object_storage_catalog.images import import_images
 
 
 @pytest.fixture
@@ -81,6 +81,9 @@ class FakeBlobs:
     def digest(self, relative, etag):
         return hashlib.sha256(self.download(relative, etag)).hexdigest()
 
+    def validate_upload(self, source):
+        pass
+
     def upload(self, relative, source, record, previous):
         current = self.get(relative)
         if self.race or (current and (not previous or current["etag"] != previous["etag"])):
@@ -88,6 +91,9 @@ class FakeBlobs:
         self.put(relative, source.read_bytes())
         self.writes += 1
         return self.get(relative)
+
+    def close(self):
+        pass
 
     def public_access(self):
         return self.public

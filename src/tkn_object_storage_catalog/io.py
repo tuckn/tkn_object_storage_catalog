@@ -119,7 +119,7 @@ def atomic_bytes(
     if path.is_file() and path.read_bytes() == content:
         return False
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=".azure-blob-note-", suffix=".tmp", dir=path.parent)
+    fd, temporary = tempfile.mkstemp(prefix=".object-storage-catalog-", suffix=".tmp", dir=path.parent)
     temp = Path(temporary)
     try:
         with os.fdopen(fd, "wb") as stream:
@@ -148,7 +148,7 @@ def copy_verified(source: Path, target: Path, digest: str | None = None) -> str:
             raise ConflictError(f"Destination already contains different data: {target.name}")
         return digest
     target.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=".azure-blob-note-", suffix=".tmp", dir=target.parent)
+    fd, temporary = tempfile.mkstemp(prefix=".object-storage-catalog-", suffix=".tmp", dir=target.parent)
     temp = Path(temporary)
     try:
         with source.open("rb") as src, os.fdopen(fd, "wb") as dst:

@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from tkn_azure_blob_note.cli import main
-from tkn_azure_blob_note.config import init_config, load_config, resource
-from tkn_azure_blob_note.errors import AppError, ConflictError
+from tkn_object_storage_catalog.cli import main
+from tkn_object_storage_catalog.config import init_config, load_config, resource
+from tkn_object_storage_catalog.errors import AppError, ConflictError
 
 
 def write(path, text):
@@ -41,7 +41,7 @@ def test_five_layers_and_origin(tmp_path):
     [
         "conversion: {}",
         "schema_version: 1\n",
-        'schema_version: "3.0.0"\n',
+        'schema_version: "4.0.0"\n',
         'schema_version: "1.1.0"\n',
         'schema_version: "1.0"\n',
         'schema_version: "1.0.0"\nconversion:\n  mystery: 1\n',
@@ -67,7 +67,7 @@ def test_init_protection_and_backup(tmp_path):
     assert not path.exists()
     assert init_config(path)["status"] == "created"
     assert init_config(path)["status"] == "unchanged"
-    assert 'schema_version: "2.0.0"' in path.read_text()
+    assert 'schema_version: "3.0.0"' in path.read_text()
     path.write_text("# Edited\n" + path.read_text(), encoding="utf-8")
     with pytest.raises(ConflictError):
         init_config(path)
@@ -104,13 +104,13 @@ def test_config_and_help_readonly(tmp_path, monkeypatch, capsys):
 
 def test_installed_entrypoint_outside_repository(tmp_path):
     completed = subprocess.run(
-        [sys.executable, "-m", "tkn_azure_blob_note", "--version"],
+        [sys.executable, "-m", "tkn_object_storage_catalog", "--version"],
         cwd=tmp_path,
         capture_output=True,
         text=True,
     )
     assert completed.returncode == 0
-    assert "tkn-azure-blob-note 0.2.1" in completed.stdout
+    assert "tkn-object-storage-catalog 0.3.0" in completed.stdout
 
 
 def test_cli_import_json_and_quiet(cfg, source, capsys):

@@ -140,7 +140,7 @@ class Catalog:
         return fingerprint(
             {
                 "library": str(self.root),
-                **{key: self.config.azure[key] for key in ("account_url", "container", "prefix")},
+                **self.config.target_identity,
             }
         )
 
@@ -157,7 +157,7 @@ class Catalog:
             "etag": remote["etag"],
             "version_id": remote.get("version_id"),
             "synced_at": now(),
-            "target": self.config.azure,
+            "target": {"provider": self.config.provider, **self.config.target_identity},
         }
         atomic_json(
             self.config.state_root / "sync" / self.target_key() / (record["asset_id"] + ".json"),
@@ -174,6 +174,7 @@ def make_record(
     size: int,
     recipe: str | None = None,
 ) -> Record:
+    # This historical namespace is part of the durable ID contract, not the product name.
     asset_id = str(uuid5(NAMESPACE_URL, "azure-blob-note:" + identity))
     stamp = now()
     return {
@@ -208,7 +209,7 @@ class Operation(AbstractContextManager["Operation"]):
             "schema_version": SCHEMA_VERSION,
             "run_id": self.run_id,
             "command": command,
-            "agent": {"name": "tkn-azure-blob-note", "version": __version__},
+            "agent": {"name": "tkn-object-storage-catalog", "version": __version__},
             "started_at": now(),
             "status": "running",
             "events": [],
@@ -233,7 +234,7 @@ class Operation(AbstractContextManager["Operation"]):
                         "%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%dT%H:%M:%S%z"
                     )
                 )
-                logging.getLogger("tkn_azure_blob_note").addHandler(self.handler)
+                logging.getLogger("tkn_object_storage_catalog").addHandler(self.handler)
                 self.flush()
             except BaseException:
                 self.lock.release()
@@ -258,7 +259,7 @@ class Operation(AbstractContextManager["Operation"]):
             self.flush()
         finally:
             if self.handler:
-                logging.getLogger("tkn_azure_blob_note").removeHandler(self.handler)
+                logging.getLogger("tkn_object_storage_catalog").removeHandler(self.handler)
                 self.handler.close()
             if self.lock:
                 self.lock.release()

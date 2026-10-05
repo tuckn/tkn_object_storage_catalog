@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import mimetypes
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 from azure.core import MatchConditions
 from azure.core.exceptions import HttpResponseError, ResourceNotFoundError
@@ -14,17 +14,6 @@ from .catalog import Record
 from .config import Config
 from .errors import AppError, ConflictError
 from .io import IMAGE_EXTENSIONS, safe_relative
-
-
-class BlobStore(Protocol):
-    def list(self) -> list[Record]: ...
-    def get(self, relative: str) -> Record | None: ...
-    def digest(self, relative: str, etag: str) -> str: ...
-    def download(self, relative: str, etag: str) -> bytes: ...
-    def upload(
-        self, relative: str, source: Path, record: Record, previous: Record | None
-    ) -> Record: ...
-    def public_access(self) -> bool | None: ...
 
 
 class AzureBlobs:
@@ -111,6 +100,9 @@ class AzureBlobs:
             )
             .readall()
         )
+
+    def validate_upload(self, source: Path) -> None:
+        """Azure SDK handles chunked transfers; no additional local size limit."""
 
     def upload(
         self, relative: str, source: Path, record: Record, previous: Record | None

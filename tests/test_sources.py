@@ -7,12 +7,12 @@ from pathlib import Path
 import pytest
 from ruamel.yaml import YAML
 
-import tkn_azure_blob_note.cli as cli
-from tkn_azure_blob_note.catalog import Catalog, Operation
-from tkn_azure_blob_note.config import load_config, resource
-from tkn_azure_blob_note.errors import AppError
-from tkn_azure_blob_note.images import import_images
-from tkn_azure_blob_note.sync import push
+import tkn_object_storage_catalog.cli as cli
+from tkn_object_storage_catalog.catalog import Catalog, Operation
+from tkn_object_storage_catalog.config import load_config, resource
+from tkn_object_storage_catalog.errors import AppError
+from tkn_object_storage_catalog.images import import_images
+from tkn_object_storage_catalog.sync import push
 
 
 @pytest.fixture(autouse=True)
@@ -59,12 +59,12 @@ def snapshot(root):
 def test_named_defaults_and_readonly_report(tmp_path):
     config = load_config()
     assert config.source_id == "my-obj-storage-1"
-    assert config.data_root == tmp_path / "home/.tkn/azure_blob_note/data/my-obj-storage-1"
-    assert config.state_root == tmp_path / "home/.tkn/azure_blob_note/state/my-obj-storage-1"
+    assert config.data_root == tmp_path / "home/.tkn/object_storage_catalog/data/my-obj-storage-1"
+    assert config.state_root == tmp_path / "home/.tkn/object_storage_catalog/state/my-obj-storage-1"
     assert config.notes_root == config.data_root / "notes"
     report = config.report()
-    assert report["config"]["schema_version"] == "2.0.0"
-    assert report["effective_schema_version"] == "2.0.0"
+    assert report["config"]["schema_version"] == "3.0.0"
+    assert report["effective_schema_version"] == "3.0.0"
     assert report["selected_source"] == "my-obj-storage-1"
     assert not (tmp_path / "home").exists()
 
@@ -258,7 +258,7 @@ def test_cli_reports_all_sources_and_requires_selection_before_any_work(
     tmp_path, monkeypatch, capsys
 ):
     path = write_config(tmp_path, pair())
-    monkeypatch.setattr(cli, "AzureBlobs", lambda *_: pytest.fail("Unexpected Azure access"))
+    monkeypatch.setattr(cli, "open_store", lambda *_: pytest.fail("Unexpected Azure access"))
     before = snapshot(tmp_path)
     assert cli.main(["--config", str(path), "config", "list", "--json"]) == 0
     report = json.loads(capsys.readouterr().out)
@@ -309,7 +309,7 @@ def test_every_command_routes_to_selected_source(
         return blobs
 
     monkeypatch.setattr(cli, function, capture)
-    monkeypatch.setattr(cli, "AzureBlobs", adapter)
+    monkeypatch.setattr(cli, "open_store", adapter)
     monkeypatch.setattr(blobs, "close", lambda: None, raising=False)
     assert cli.main(["--source", "private-images", "--config", str(path), *args]) == 0
     assert calls == ["private-images"]

@@ -1,5 +1,16 @@
 # 変更履歴
 
+## 0.3.0 — 2026-10-06
+
+- CLI / 配布名を `tkn-object-storage-catalog`、Python パッケージを `tkn_object_storage_catalog` に変更しました。
+- source ごとに Azure Blob Storage・AWS S3・Cloudflare R2 を選択できるようにしました。
+- S3/R2 のページ付き一覧、条件付きアップロード・ダウンロード、内容検証、メタデータ保持を追加しました。
+- 設定スキーマを 3.0.0 にし、新規保存先を `~/.tkn/object_storage_catalog/` にしました。旧設定 1.0.x/2.0.x は従来の保存先と Azure 同期履歴を保持して読み込みます。
+- 新ユーザー設定がない場合に旧 Azure 設定を読み込みます。旧設定の使用中は、既定の config init による意図しない切り替えを防ぎます。
+- ノートスキーマ 2.0.0 で `storageProvider`・`objectKey`・`objectUrl` を採用しました。旧ノートは ID・説明・独自項目・本文を保持して更新します。
+- S3/R2 のアップロードは公開状態不明として確認を求めます。R2 の API エンドポイントと配信 URL を分離しました。
+- S3/R2 の単一 PUT は1画像あたり 5,000,000,000 bytes 以下です。実クラウドへの接続検証は行っていません。
+
 ## 0.2.1 — 2026-10-06
 
 - 設定ひな形の source ID を my-obj-storage-1 に変更し、任意の名前であることと2つ目の source の追加方法を示しました。

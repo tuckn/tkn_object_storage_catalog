@@ -214,7 +214,9 @@ def build_images(config: Config, selectors: list[str], operation: Operation) -> 
         convert = should_convert(original, config)
         expected_suffix = ".webp" if convert else original.suffix
         if Path(record["relative_path"]).suffix.lower() != expected_suffix.lower():
-            raise ConflictError("Changing format would rename the blob; import under a new --name.")
+            raise ConflictError(
+                "Changing format would rename the object; import under a new --name."
+            )
         if not operation.dry_run:
             content = render_image(original, config, convert)
             updated = deepcopy(record)

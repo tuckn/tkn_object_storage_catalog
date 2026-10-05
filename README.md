@@ -1,11 +1,12 @@
-# tkn-azure-blob-note: Tkn Azure Blob Note
+# tkn-object-storage-catalog: Tkn Object Storage Catalog
 
-画像の原本を手元に保存し、公開用の画像を Azure Blob Storage と同期し、画像ごとの説明や関連を Obsidian の Markdown ノートで管理する CLI です。
+Azure Blob Storage・AWS S3・Cloudflare R2 の画像を、手元の原本・公開用画像・Obsidian の Markdown メタデータと対応付けて管理するカタログ CLI です。
+1つの source が特定のコンテナーまたはバケットに対応します。画像ごとの説明、タグ、関連はノートに記録できます。
 
 たとえば PNG を取り込むと、原本をそのまま保存したうえで、アップロード用の WebP と、説明文・タグ・関連プロジェクトを書き込めるノートを作成します。
 アップロードで送信するのは公開用の画像だけです。
-ダウンロードでは、Azure に保存されているバイト列をそのまま取得します。
-どちらの操作も、コンテナーの匿名公開アクセスを必要としません。
+ダウンロードでは、クラウドに保存されているバイト列をそのまま取得します。
+どちらの操作も、コンテナーやバケットの匿名公開アクセスを必要としません。
 
 初めて使う場合は、「[1. これは何か](#1-これは何か)」から「[3. 実行する](#3-実行する)」までを上から順に読みます。
 「[4. コマンド一覧](#4-コマンド一覧)」以降は、必要になったときに目的の項目を参照します。
@@ -19,7 +20,7 @@
 | 作成されるもの | 保存先（データ保存領域からの相対パス） | 使い道 |
 | --- | --- | --- |
 | 原本の写し | `originals/<sha256>/photo.png` | 変換前のバイト列を保持します。変換設定を変えて作り直すときの元になります。 |
-| 公開用の画像 | `releases/photo.webp` | Azure Blob Storage へアップロードする画像です。 |
+| 公開用の画像 | `releases/photo.webp` | 選択した Object Storage へアップロードする画像です。 |
 | 画像ノート | `notes/photo.webp.md` | 説明、タグ、関連プロジェクトなどを書き込みます。 |
 
 画像ノートは、次のような Markdown です。
@@ -42,19 +43,19 @@ syncStatus: synced
 ---
 # photo
 
-<!-- azure-blob-note:begin -->
+<!-- object-storage-catalog:begin -->
 ![Image](../releases/photo.webp)
 
 [Local image](file:///C:/path/to/data/releases/photo.webp)
 
 [Remote image (access permissions apply)](https://examplestorage.blob.core.windows.net/images/photo.webp)
-<!-- azure-blob-note:end -->
+<!-- object-storage-catalog:end -->
 
 ここから下は自由に書けます。
 ```
 
 `title`、`description`、`tags` などと本文は、利用者が編集する項目です。
-`assetId`、`url`、`syncStatus` など、および `azure-blob-note:begin` から `azure-blob-note:end` までのブロックは、CLI が更新します。
+`assetId`、`url`、`syncStatus` など、および `object-storage-catalog:begin` から `object-storage-catalog:end` までのブロックは、CLI が更新します。
 CLI は、利用者が編集した項目、独自に追加したプロパティ、ブロック外の本文を保持します。
 
 ### 1.2. 対象範囲
@@ -64,7 +65,7 @@ CLI は、利用者が編集した項目、独自に追加したプロパティ�
 | 扱うもの | 画像ファイル（`.apng` `.avif` `.bmp` `.gif` `.ico` `.jpg` `.jpeg` `.png` `.svg` `.tif` `.tiff` `.webp`） |
 | 自動で変換するもの | 静止画の JPEG と PNG を WebP に変換します。それ以外の形式とアニメーション PNG は、変換せずにコピーします。 |
 | 扱わないもの | 画像以外のファイル、動画（WebM への変換を含む） |
-| 行わないこと | ストレージ アカウントやコンテナーの作成、アクセス権の変更、独自ドメインや HTTPS の設定、Azure 上の blob の削除、生成 AI による分類 |
+| 行わないこと | ストレージ アカウント・コンテナー・バケットの作成、アクセス権の変更、独自ドメインや HTTPS の設定、クラウド上のオブジェクトの削除、生成 AI による分類 |
 
 主な対象環境は Windows です。
 
@@ -76,10 +77,10 @@ CLI は、利用者が編集した項目、独自に追加したプロパティ�
 | 公開用画像（release） | アップロードの対象になる画像です。原本を変換またはコピーして作ります。 |
 | 画像ノート | 画像1枚に対応する Markdown ノートです。説明や関連を書き込みます。 |
 | アセット | 原本・公開用画像・画像ノートをひとまとめにした管理単位です。変わらない識別子（アセット ID）を持ちます。 |
-| 同期の基準（baseline） | 最後に同期が完了した時点の内容の記録です。次回の同期で、手元と Azure のどちらが変わったかを判定するために使います。 |
+| 同期の基準（baseline） | 最後に同期が完了した時点の内容の記録です。次回の同期で、手元とクラウド のどちらが変わったかを判定するために使います。 |
 
 アセット ID は、ファイル名やノートのタイトルとは独立しています。
-ノートのタイトルやカテゴリーを変えても、画像のファイル名、blob 名、URL は変わりません。
+ノートのタイトルやカテゴリーを変えても、画像のファイル名、オブジェクトキー、URL は変わりません。
 
 ### 1.4. 全体像
 
@@ -94,18 +95,18 @@ flowchart LR
     Import --> Releases[("releases：公開用画像")]
     Import --> Notes[("notes：画像ノート")]
     Releases --> Push["push：アップロードする"]
-    Push --> Blob[("Azure Blob Storage")]
+    Push --> Blob[("Azure Blob Storage / AWS S3 / Cloudflare R2")]
     Blob --> Pull["pull：ダウンロードする"]
     Pull --> Releases
     Pull --> Notes
 ```
 
-`import` は手元だけで完結し、Azure へ接続しません。
-Azure へ接続するのは、`push`、`pull`、および `--remote` を付けた `status` と `verify` です。
+`import` は手元だけで完結し、クラウドへ接続しません。
+クラウドへ接続するのは、`push`、`pull`、および `--remote` を付けた `status` と `verify` です。
 `push` と `pull` は、同期の結果を画像ノートの `syncStatus` にも反映します。
 
 設定と実行時のデータは、このソース リポジトリの外に保存します。
-既定の保存先は、ホーム フォルダー配下の `~/.tkn/azure_blob_note/` です。
+既定の保存先は、ホーム フォルダー配下の `~/.tkn/object_storage_catalog/` です。
 各フォルダーの役割は「[6. 保存構造](#6-保存構造)」で説明します。
 
 ## 2. セットアップ
@@ -114,17 +115,19 @@ Azure へ接続するのは、`push`、`pull`、および `--remote` を付け�
 
 - Python 3.11 以降
 - [uv](https://docs.astral.sh/uv/)
-- Azure と同期する場合：既存のストレージ アカウントとコンテナー、[Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli)
+- Object Storage と同期する場合：既存のコンテナーまたはバケットと、読み書きできる認証情報
+- Azure CLI 認証を使う場合：[Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli)
+- AWS S3 / Cloudflare R2：AWS SDK が読み取れる認証プロファイルまたは環境変数。AWS CLI はプロファイル設定用に利用できます。
 
-取り込み（`import`）、再作成（`build`）、ノートの更新（`notes refresh`）は、Azure の認証なしで実行できます。
+取り込み（`import`）、再作成（`build`）、ノートの更新（`notes refresh`）は、クラウドの認証なしで実行できます。
 
 ### 2.2. インストール
 
 クローンしたリポジトリのフォルダーへ移動し、インストールします。
-`C:\path\to\tkn_azure_blob_note` は、実際のフォルダーのパスに置き換えます。
+`C:\path\to\tkn_object_storage_catalog` は、実際のフォルダーのパスに置き換えます。
 
 ```shell
-cd "C:\path\to\tkn_azure_blob_note"
+cd "C:\path\to\tkn_object_storage_catalog"
 uv tool install .
 ```
 
@@ -133,62 +136,111 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 インストールできたことを確認します。
 
 ```shell
-tkn-azure-blob-note --version
+tkn-object-storage-catalog --version
 ```
 
-`tkn-azure-blob-note 0.2.1` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-object-storage-catalog 0.3.0` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
-コマンドとオプションの一覧は `tkn-azure-blob-note --help` で確認できます。
-`--version` と `--help` は、設定や Azure の認証が済んでいなくても表示されます。
+コマンドとオプションの一覧は `tkn-object-storage-catalog --help` で確認できます。
+`--version` と `--help` は、設定やクラウドの認証が済んでいなくても表示されます。
 
 ### 2.3. 設定ファイルの作成
 
 設定ファイルを作成し、作成先と現在の設定値を確認します。
 
 ```shell
-tkn-azure-blob-note config init
-tkn-azure-blob-note config list
+tkn-object-storage-catalog config init
+tkn-object-storage-catalog config list
 ```
 
-`config init` は、`~/.tkn/azure_blob_note/config.yaml` に設定ファイルのひな形を作成し、そのパスを表示します。
+`config init` は、`~/.tkn/object_storage_catalog/config.yaml` に設定ファイルのひな形を作成し、そのパスを表示します。
 `config list` は、有効な設定値と、各値がどの設定ファイルに由来するかを表示します。
 
-### 2.4. 最小限の設定と確認
+### 2.4. 接続先と認証の設定
 
-作成された `config.yaml` を開き、Azure の接続先を設定します。
-次は変更する部分の抜粋です。
-`schema_version` など、ファイル内の他の設定はそのまま残します。
+作成された `config.yaml` を開き、source の `provider` と対応する接続設定を変更します。
+以下はそれぞれ単独で使える最小構成です。`my-obj-storage-1` は任意の source ID です。
+画像の変換・保存先・配信 URL は、接続先によらず同じ設定を使います。
+
+**Azure Blob Storage**
 
 ```yaml
-schema_version: "2.0.0"
+schema_version: "3.0.0"
 sources:
   my-obj-storage-1:
+    provider: azure
     azure:
       account_url: https://examplestorage.blob.core.windows.net
       container: images
 ```
 
-`sources.my-obj-storage-1` が1つの同期対象です。1つのコンテナーに1つの source を設定します。
-`azure`、`delivery`、`conversion` と保存先は、すべて `sources.<source-id>` の中に書きます。
-source ID は自由に付ける名前です。ひな形では `my-obj-storage-1` を使います。
-
-`account_url` と `container` は、実在するストレージ アカウントとコンテナーの値に置き換えます。
-編集後にもう一度 `tkn-azure-blob-note config list` を実行し、値が反映されたことを確認します。
-
-Azure と同期する場合は、Azure CLI でサインインします。
+Azure CLI でサインインします。
 
 ```shell
 az login
 ```
 
-サインインした ID には、対象コンテナーに対する blob データの権限が必要です。
-アップロードとダウンロードを行う場合は「ストレージ BLOB データ共同作成者」、読み取りだけの場合は「ストレージ BLOB データ閲覧者」が目安です。
-詳しくは [Microsoft Entra ID による BLOB へのアクセス承認](https://learn.microsoft.com/azure/storage/blobs/authorize-access-azure-active-directory)を参照します。
+読み書きには対象コンテナーへの「ストレージ BLOB データ共同作成者」、読み取りだけなら「ストレージ BLOB データ閲覧者」が目安です。
+[Microsoft Entra ID による BLOB へのアクセス承認](https://learn.microsoft.com/azure/storage/blobs/authorize-access-azure-active-directory)も参照してください。
+Azure 上では `azure.auth: managed_identity` も選べます。
 
-認証情報は、このツールの設定ファイルや画像ノートには保存されません。
-実行時に `.env` ファイルは読み込みません。
-設定項目の一覧と、マネージド ID を使う方法は「[5. 設定](#5-設定)」で説明します。
+**AWS S3**
+
+```yaml
+schema_version: "3.0.0"
+sources:
+  my-obj-storage-1:
+    provider: s3
+    s3:
+      bucket: example-images
+      region: ap-northeast-1
+      profile: images
+```
+
+`profile` は AWS の共有設定・認証情報に登録したプロファイル名です。
+たとえば AWS CLI の `aws configure --profile images` で設定します。
+IAM Identity Center の場合は、設定済みのプロファイルで `aws sso login --profile images` を実行します。
+`profile` を省略すると、環境変数やロールなど、Boto3 の標準の認証情報探索を使います。
+読み取りには対象バケットの `s3:ListBucket` と対象オブジェクトの `s3:GetObject`、アップロードには加えて `s3:PutObject` が必要です。
+SSE-KMS を使うバケットでは KMS の権限も必要です。
+詳細は [Boto3 の認証情報](https://docs.aws.amazon.com/boto3/latest/guide/credentials.html)を参照してください。
+
+**Cloudflare R2**
+
+```yaml
+schema_version: "3.0.0"
+sources:
+  my-obj-storage-1:
+    provider: r2
+    s3:
+      bucket: example-images
+      endpoint_url: https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com
+      region: auto
+      profile: r2-images
+    delivery:
+      url_base: https://images.example.com
+```
+
+`endpoint_url` は Cloudflare が表示するアカウントの S3 API エンドポイントに置き換えます。
+EU / FedRAMP の管轄別エンドポイントにも対応します。
+R2 の Access Key ID / Secret Access Key を `r2-images` プロファイルに設定します（例：`aws configure --profile r2-images`）。
+通常の Cloudflare API トークンをそのまま S3 のキーとして指定することはできません。
+認証情報には対象バケットのオブジェクト読み書き権限が必要です。
+[Cloudflare の Boto3 利用例](https://developers.cloudflare.com/r2/examples/aws/boto3/)を参照してください。
+
+`delivery.url_base` は任意です。配信する場合だけ、設定済みの独自ドメインなどを指定します。
+R2 の S3 API エンドポイントはブラウザー向けの配信 URL として使わないため、未設定ではノートの `url` は `null` になり、手元の画像へのリンクを使います。
+
+**設定の確認**
+
+```shell
+tkn-object-storage-catalog config list
+```
+
+認証情報は、この CLI の YAML・画像ノート・実行記録には保存しません。`.env` ファイルも読み込みません。
+S3 と R2 では同じ `s3` 設定ブロックを使います。`provider` に対応する接続設定だけが使用されます。
+接続先を変えたときの同期履歴は分離されます。ファイルは自動で移動されません。
 
 ## 3. 実行する
 
@@ -202,7 +254,7 @@ az login
 `C:\path\to\photo.png` は、実在する画像のパスに置き換えます。
 
 ```shell
-tkn-azure-blob-note import "C:\path\to\photo.png"
+tkn-object-storage-catalog import "C:\path\to\photo.png"
 ```
 
 原本が `originals/<sha256>/` に保存され、公開用画像 `releases/photo.webp` と画像ノート `notes/photo.webp.md` が作成されます。
@@ -235,34 +287,34 @@ JPEG や PNG を変換せずに取り込むには、`import --no-convert` を使
 **2. アップロードの内容を確認してから、アップロードします。**
 
 ```shell
-tkn-azure-blob-note push photo.webp --dry-run
-tkn-azure-blob-note push photo.webp
+tkn-object-storage-catalog push photo.webp --dry-run
+tkn-object-storage-catalog push photo.webp
 ```
 
 > [!IMPORTANT]
-> `push` は、設定したコンテナーとプレフィックスの範囲へ画像を送信します。
-> コンテナーが匿名公開されている場合、アクセス レベルを確認できない場合、コンテナーが `$web` の場合、`delivery.url_base` を設定している場合は、アップロードの前に確認を求めます。
+> `push` は、設定したコンテナー／バケットとプレフィックスの範囲へ画像を送信します。
+> Azure では匿名公開・公開状態不明・`$web`・配信 URL 設定済みの場合に確認を求めます。S3/R2 では公開経路を網羅して判定できないため、変更を伴うアップロードで常に確認を求めます。
 > 対話できない環境（スケジュール実行など）で意図して公開アップロードを行うときは、`--yes` を付けます。
 
-`--dry-run` も Azure に接続し、認証と blob の読み取りを行います。
-Azure の読み取り操作には、サービスの料金が発生する場合があります。
+`--dry-run` もクラウドに接続し、認証とオブジェクトの読み取りを行います。
+クラウドの読み取り操作には、サービスの料金が発生する場合があります。
 
-**3. Azure 上の画像が手元と一致することを確認します。**
+**3. クラウド上の画像が手元と一致することを確認します。**
 
 ```shell
-tkn-azure-blob-note verify --remote
+tkn-object-storage-catalog verify --remote
 ```
 
-表示された JSON の `valid` が `true` であれば、手元の画像、原本、画像ノート、Azure 上の画像に不整合はありません。
+表示された JSON の `valid` が `true` であれば、手元の画像、原本、画像ノート、クラウド上の画像に不整合はありません。
 `false` の場合は、各項目の `issues` に理由が表示され、終了コードは 2 になります。
 
 **4. Obsidian でノートを開きます（任意）。**
 
-データ保存領域（既定では `~/.tkn/azure_blob_note/data/my-obj-storage-1`）を Obsidian の Vault として開き、`notes` フォルダーのノートを開きます。
+データ保存領域（既定では `~/.tkn/object_storage_catalog/data/my-obj-storage-1`）を Obsidian の Vault として開き、`notes` フォルダーのノートを開きます。
 既定の配置では、ノートと手元の画像が同じ Vault に入るため、ノート内に画像が表示されます。
 `description`、`tags`、`nouns`、`domains`、`projects` と本文を自由に編集します。
 
-`tkn-azure-blob-note notes refresh` を実行すると、ギャラリー表示用の `notes/images.base`（Obsidian Bases のビュー）が、存在しない場合に作成されます。
+`tkn-object-storage-catalog notes refresh` を実行すると、ギャラリー表示用の `notes/images.base`（Obsidian Bases のビュー）が、存在しない場合に作成されます。
 
 既存の Vault に組み込む方法は「[5.2. 既存の Vault にノートを置く](#52-既存の-vault-にノートを置く)」で説明します。
 
@@ -270,27 +322,27 @@ tkn-azure-blob-note verify --remote
 
 ```shell
 # フォルダーを取り込む。フォルダー内の相対的な階層を保つ。
-tkn-azure-blob-note import "C:\path\to\images"
+tkn-object-storage-catalog import "C:\path\to\images"
 
 # 引数を省略すると、データ保存領域の staging フォルダーを取り込む。
-tkn-azure-blob-note import
+tkn-object-storage-catalog import
 
-# 手元の状態を確認する。--remote を付けると Azure とも比較する。
-tkn-azure-blob-note status
-tkn-azure-blob-note status --remote
+# 手元の状態を確認する。--remote を付けると クラウドとも比較する。
+tkn-object-storage-catalog status
+tkn-object-storage-catalog status --remote
 
 # 設定した範囲の管理対象画像をすべて転送する。
-tkn-azure-blob-note push
-tkn-azure-blob-note pull
+tkn-object-storage-catalog push
+tkn-object-storage-catalog pull
 
 # 変換設定を変えた後、保存してある原本から公開用画像を作り直す。
-tkn-azure-blob-note build
+tkn-object-storage-catalog build
 
 # ノートの自動生成項目（メタデータ、URL、手元の画像へのリンク）を更新する。
-tkn-azure-blob-note notes refresh
+tkn-object-storage-catalog notes refresh
 
 # 手元のハッシュ値とノートの識別子を検査する。
-tkn-azure-blob-note verify
+tkn-object-storage-catalog verify
 ```
 
 取り込みを繰り返したときの動作は、次のとおりです。
@@ -307,32 +359,32 @@ WebP へ変換される場合、拡張子は `.webp` に置き換わります。
 画像ノートは、`notes_root` の中であれば名前の変更や移動ができます。
 CLI は、ノートに記録された ID で対応するノートを見つけます。
 
-### 3.3. 手元と Azure の内容が食い違ったとき
+### 3.3. 手元とクラウド の内容が食い違ったとき
 
-`push` と `pull` は、同期の基準と比較して、手元と Azure のどちらが変わったかを判定します。
+`push` と `pull` は、同期の基準と比較して、手元とクラウド のどちらが変わったかを判定します。
 両方が変わっている場合や、同期の記録がない転送先に異なる内容がある場合は、何も転送せずに停止します。
 
 両方の内容を確認したうえで、残す側に応じたコマンドに `--overwrite` を付けます。
-次は、Azure 側の内容で手元を置き換える例です。
+次は、クラウド側の内容で手元を置き換える例です。
 
 ```shell
-tkn-azure-blob-note pull photo.webp --overwrite --dry-run
-tkn-azure-blob-note pull photo.webp --overwrite --yes
+tkn-object-storage-catalog pull photo.webp --overwrite --dry-run
+tkn-object-storage-catalog pull photo.webp --overwrite --yes
 ```
 
 > [!WARNING]
 > `--overwrite` は、コマンドの方向に沿って転送先の内容を置き換えます。
 > `pull --overwrite` で置き換えられる手元の画像は、事前に `history` フォルダーへ退避されます。
-> `push --overwrite` で置き換えた Azure 側の内容を元に戻せるかどうかは、Azure のバージョン管理やバックアップの設定に依存します。この CLI は、それらを有効にしません。
+> `push --overwrite` で置き換えたクラウド側の内容を元に戻せるかどうかは、各サービスのバージョン管理やバックアップの設定に依存します。この CLI は、それらを有効にしません。
 
 `--yes` は確認を省略するためのオプションで、内容の食い違いは解決しません。
 食い違いの解決には、必ず `--overwrite` を指定します。
 
 同期コマンドは、片方にしかない画像を削除しません。
-同期済みの画像が Azure 側で削除されていた場合、`push` は自動では再作成せずに停止します。
+同期済みの画像が クラウド側で削除されていた場合、`push` は自動では再作成せずに停止します。
 再作成するには `--overwrite` を付けます。
 
-`pull` が既存のアセットを Azure 側の内容で置き換えると、そのアセットは原本との対応を失います。
+`pull` が既存のアセットを クラウド側の内容で置き換えると、そのアセットは原本との対応を失います。
 ノートの `sourceAvailable` は `false` になり、以後 `build` の対象から外れます。
 `originals` に保存済みの原本ファイルは削除されません。
 
@@ -345,16 +397,16 @@ tkn-azure-blob-note pull photo.webp --overwrite --yes
 次の順で状態を確認し、復旧します。
 
 ```shell
-tkn-azure-blob-note verify
-tkn-azure-blob-note recover --dry-run
-tkn-azure-blob-note recover
-tkn-azure-blob-note verify
+tkn-object-storage-catalog verify
+tkn-object-storage-catalog recover --dry-run
+tkn-object-storage-catalog recover
+tkn-object-storage-catalog verify
 ```
 
 `recover` は、公開用画像の書き込みまで終わっていて、カタログとノートの更新だけが残っている処理を完了させます。
-記録された内容と一致する画像が手元にある場合だけ復旧し、Azure への書き込みは行いません。
+記録された内容と一致する画像が手元にある場合だけ復旧し、クラウドへの書き込みは行いません。
 復旧後に、失敗したコマンドをもう一度実行します。
-アップロードが中断していた場合、再実行時に Azure 上の内容を読み取って比較し、一致していればアップロード済みとして扱います。
+アップロードが中断していた場合、再実行時に クラウド上の内容を読み取って比較し、一致していればアップロード済みとして扱います。
 
 実行ごとの記録の保存先は「[6. 保存構造](#6-保存構造)」を参照します。
 
@@ -370,14 +422,14 @@ tkn-azure-blob-note verify
 | 有効な設定を確認する | `config list [--json]` | なし | なし |
 | 画像を取り込む | `import [PATH ...] [--name PATH] [--no-convert]` | なし | 原本、公開用画像、ノート、実行記録 |
 | 公開用画像を作り直す | `build [ASSET ...]` | なし | 公開用画像、`history`、ノート、実行記録 |
-| アップロードする | `push [ASSET ...] [--overwrite] [--yes]` | Azure の読み取りと書き込み | Azure 上の blob、同期の基準、ノート、実行記録 |
-| ダウンロードする | `pull [ASSET ...] [--overwrite] [--yes]` | Azure の読み取り | 公開用画像、`history`、同期の基準、ノート、実行記録 |
+| アップロードする | `push [ASSET ...] [--overwrite] [--yes]` | クラウドの読み取りと書き込み | クラウド上のオブジェクト、同期の基準、ノート、実行記録 |
+| ダウンロードする | `pull [ASSET ...] [--overwrite] [--yes]` | クラウドの読み取り | 公開用画像、`history`、同期の基準、ノート、実行記録 |
 | ノートの自動生成項目を更新する | `notes refresh [ASSET ...]` | なし | ノート、カタログ、実行記録 |
-| 状態を確認する | `status [--remote]` | `--remote` のとき Azure の一覧取得 | なし |
-| 整合性を検査する | `verify [--remote]` | `--remote` のとき Azure から内容を読み取り | なし |
+| 状態を確認する | `status [--remote]` | `--remote` のときクラウドの一覧取得 | なし |
+| 整合性を検査する | `verify [--remote]` | `--remote` のときクラウドから内容を読み取り | なし |
 | 中断した処理を完了させる | `recover` | なし | カタログ、ノート、実行記録 |
 
-各コマンドの引数とオプションは、`tkn-azure-blob-note <command> --help` で確認できます。
+各コマンドの引数とオプションは、`tkn-object-storage-catalog <command> --help` で確認できます。
 
 ### 4.1. 共通の動作
 
@@ -387,9 +439,9 @@ source が1つなら自動で選びます。複数ある場合、データを扱
 `--source <id>` を指定します。アセットの省略は、その source 内の全アセットを意味します。
 
 ```shell
-tkn-azure-blob-note import --source my-obj-storage-1 "C:\path\to\photo.png"
-tkn-azure-blob-note push --source my-obj-storage-1 --dry-run
-tkn-azure-blob-note status --source my-obj-storage-1
+tkn-object-storage-catalog import --source my-obj-storage-1 "C:\path\to\photo.png"
+tkn-object-storage-catalog push --source my-obj-storage-1 --dry-run
+tkn-object-storage-catalog status --source my-obj-storage-1
 ```
 
 `--source` はサブコマンドの前後どちらにも書けます。
@@ -405,10 +457,10 @@ tkn-azure-blob-note status --source my-obj-storage-1
 | --- | --- |
 | データ、ノート、同期の基準、実行記録、ログ | 作成も変更もしません。 |
 | 画像の変換 | 行いません。 |
-| Azure への書き込み | 行いません。 |
-| Azure の認証と読み取り（`push` と `pull`） | 行います。比較のために blob の内容を読み取ることがあり、Azure の料金が発生する場合があります。 |
+| クラウドへの書き込み | 行いません。 |
+| クラウドの認証と読み取り（`push` と `pull`） | 行います。比較のためにオブジェクトの内容を読み取ることがあり、各サービスの料金が発生する場合があります。 |
 
-Azure の認証ライブラリは、このツールの保存領域の外に、独自のトークン キャッシュを保持することがあります。
+クラウドの認証ライブラリは、このツールの保存領域の外に、独自のトークン キャッシュを保持することがあります。
 
 **出力**
 
@@ -424,7 +476,7 @@ Azure の認証ライブラリは、このツールの保存領域の外に、�
 | --- | --- |
 | 0 | 成功 |
 | 2 | 入力や引数の誤り、内容の食い違い、検査の失敗 |
-| 3 | Azure への要求の失敗 |
+| 3 | クラウドへの要求の失敗 |
 
 **保存先を一時的に変えるオプション**
 
@@ -438,11 +490,11 @@ Azure の認証ライブラリは、このツールの保存領域の外に、�
 | `local` | `valid` | 手元の画像が、記録と一致しています。 |
 | | `modified` | 手元の画像が、CLI を通さずに変更されています。 |
 | | `missing` | 手元に画像がありません。 |
-| `remote` | `unchanged` | Azure 側は、最後の同期から変わっていません。 |
-| | `changed` | Azure 側が、最後の同期の後に変更されています。 |
-| | `untracked` | Azure 側に同名の blob がありますが、同期の記録がありません。 |
-| | `missing` | Azure 側に blob がありません。 |
-| | `remote_only` | Azure 側だけにあり、手元で管理していません。 |
+| `remote` | `unchanged` | クラウド側は、最後の同期から変わっていません。 |
+| | `changed` | クラウド側が、最後の同期の後に変更されています。 |
+| | `untracked` | クラウド側に同名のオブジェクトがありますが、同期の記録がありません。 |
+| | `missing` | クラウド側にオブジェクトがありません。 |
+| | `remote_only` | クラウド側だけにあり、手元で管理していません。 |
 | `local_since_sync` | `unchanged` / `changed` | 手元の画像が、最後の同期から変わっているかどうかです。 |
 | | `unknown` | 同期の記録がありません。 |
 
@@ -456,17 +508,23 @@ Azure の認証ライブラリは、このツールの保存領域の外に、�
 
 | 設定キー | 既定値 | 変更すると変わること |
 | --- | --- | --- |
+| `provider` | `azure` | `azure`・`s3`・`r2` のいずれかを選びます。 |
+| `s3.bucket` | `null` | S3/R2 のバケット名です。接続する場合に必須です。 |
+| `s3.region` | `null` | AWS のリージョンです。R2 は省略または `auto` にします。 |
+| `s3.endpoint_url` | `null` | R2 では S3 API エンドポイントを指定します。AWS S3 は通常省略します。 |
+| `s3.profile` | `null` | AWS SDK が使う認証プロファイル名です。 |
+| `s3.prefix` | 空 | バケット内の対象範囲です。 |
 | `azure.account_url` | `null` | 同期先のストレージ アカウントです。Azure に接続するコマンドで必須です。 |
 | `azure.container` | `null` | 同期先のコンテナーです。Azure に接続するコマンドで必須です。 |
 | `azure.prefix` | 空 | コンテナー内の、同期の対象とするフォルダーです。 |
 | `azure.auth` | `azure_cli` | 認証方法です。Azure 上で実行する場合は `managed_identity` を選べます。 |
-| `delivery.url_base` | `null` | ノートの `url` に書き込む配信 URL の起点です。未設定の場合は blob 本来の URL を使います。 |
+| `delivery.url_base` | `null` | ノートの `url` に書き込む配信 URL の起点です。未設定では Azure/S3 の API URL を使い、R2 では `null` にします。 |
 | `conversion.enabled` | `true` | JPEG と PNG を WebP に変換するかどうかです。 |
 | `notes_root` | `null` | 画像ノートの保存先です。未設定の場合は `<data_root>/notes` です。 |
 
 非公開の画像では、`delivery.url_base` を設定せず、ノート内の手元の画像へのリンクを使います。
 `delivery.url_base` は URL を組み立てるだけの設定です。
-指定する URL は、設定した blob の範囲をすでに配信している必要があります。
+指定する URL は、設定した オブジェクトの範囲をすでに配信している必要があります。
 
 すべての設定キー、既定値、設定ファイルの優先順位、相対パスの基準は、[設定とデータの取り決め](docs/reference/contracts.md)にまとめています。
 
@@ -487,16 +545,17 @@ Obsidian 上で画像がプレビュー表示されるかどうかは、利用�
 
 この CLI は、プラグインのインストール、ジャンクションの作成、添付ファイルの自動複製を行いません。
 
-### 5.3. 複数のコンテナーを管理する
+### 5.3. 複数の接続先を管理する
 
-次は、同じアカウント内の2つのコンテナーを、別々の source として管理する設定です。
-`my-obj-storage-1` と `my-obj-storage-2` は例示用の名前で、アカウント名・コンテナー名とは独立して付けられます。
+次は、Azure と AWS S3 を別々の source として管理する設定です。R2 の source も同じように追加できます。
+`my-obj-storage-1` と `my-obj-storage-2` は例示用の名前で、アカウント名・コンテナー名・バケット名とは独立して付けられます。
 `delivery` と `conversion` は source ごとに変えられます。
 
 ```yaml
-schema_version: "2.0.0"
+schema_version: "3.0.0"
 sources:
   my-obj-storage-1:
+    provider: azure
     azure:
       account_url: https://examplestorage.blob.core.windows.net
       container: images
@@ -506,35 +565,46 @@ sources:
       enabled: true
       quality: 82
   my-obj-storage-2:
-    azure:
-      account_url: https://examplestorage.blob.core.windows.net
-      container: private-images
+    provider: s3
+    s3:
+      bucket: example-private-images
+      region: ap-northeast-1
+      profile: images
     conversion:
       enabled: false
 ```
 
-保存先を省略した場合、`my-obj-storage-1` は `~/.tkn/azure_blob_note/data/my-obj-storage-1/`、
-`my-obj-storage-2` は `~/.tkn/azure_blob_note/data/my-obj-storage-2/` に保存されます。
-同期記録とログも `~/.tkn/azure_blob_note/state/<source-id>/` に分かれます。
+保存先を省略した場合、`my-obj-storage-1` は `~/.tkn/object_storage_catalog/data/my-obj-storage-1/`、
+`my-obj-storage-2` は `~/.tkn/object_storage_catalog/data/my-obj-storage-2/` に保存されます。
+同期記録とログも `~/.tkn/object_storage_catalog/state/<source-id>/` に分かれます。
 
 ```shell
-tkn-azure-blob-note import --source my-obj-storage-2 "C:\path\to\photo.png"
-tkn-azure-blob-note pull --source my-obj-storage-2 --dry-run
+tkn-object-storage-catalog import --source my-obj-storage-2 "C:\path\to\photo.png"
+tkn-object-storage-catalog pull --source my-obj-storage-2 --dry-run
 ```
 
 設定ファイルを重ねる場合、後のファイルの `sources` は前の一覧全体を置き換えます。
-同じアカウントの同じコンテナーを、異なる source に重複登録することはできません。
-`azure.prefix` が違っていても同じです。
+同じコンテナー／バケットを、異なる source に重複登録することはできません。
+`azure.prefix` / `s3.prefix` が違っていても同じです。各 source の保存先も分離します。
 
-旧形式（`schema_version: "1.0.x"`）の設定は、読み込み時に `images` として扱います。
-従来の保存先と同期記録を保持し、設定や実データは書き換えません。
-新形式に手動で書き直して既存データを使う場合は、
-`data_root` と `state_root` に従来の保存先を明示してください。
-新規 source の既定値は `<source-id>` を含む別の保存先になります。
+### 5.4. 旧 Azure 版からの引き継ぎ
+
+新しいユーザー設定がない場合は、旧 `~/.tkn/azure_blob_note/config.yaml` を読み込みます。
+設定 `1.0.x` は `images` source、`2.0.x` は既存の source 名として扱います。
+省略した保存先は従来の `~/.tkn/azure_blob_note/` 配下を使い、読み込み時に移動や書き換えは行いません。
+既存のアセット ID・ノート ID・Azure 同期履歴も保持します。
+
+旧設定が使われている状態での `config init` は、新しい設定で隠してしまわないように停止します。
+そのまま使う場合は `config list` で確認してください。
+手動で `3.0.0` へ移行する場合は、先に `config list --json` で確認した `data_root`・`state_root`・`notes_root` を明記します。
+新しいユーザー設定を作成すると、旧ユーザー設定の自動読み込みは終了します。
+
+ノートは次に更新する際に `schemaVersion: 2.0.0` となり、`blobName` / `blobUrl` を `objectKey` / `objectUrl` に置き換え、`storageProvider` を記録します。
+旧自動生成ブロックも新しい名称へ置き換えます。説明・タグ・独自プロパティ・ブロック外の本文は保持します。
 
 ## 6. 保存構造
 
-既定では、`~/.tkn/azure_blob_note/` の下に次のように保存します。
+既定では、`~/.tkn/object_storage_catalog/` の下に次のように保存します。
 保存先は source ごとの `data_root`、`state_root`、`notes_root` で変更できます。
 
 | 保存先 | 保存するもの | 失った場合 |
@@ -542,7 +612,7 @@ tkn-azure-blob-note pull --source my-obj-storage-2 --dry-run
 | `config.yaml` | 利用者の設定 | `config init` で作り直し、設定をやり直します。 |
 | `data/<source-id>/staging/` | 取り込み待ちの画像を置く場所（任意）。引数なしの `import` が読み取ります。 | 影響はありません。 |
 | `data/<source-id>/originals/<sha256>/` | 取り込んだ原本。変更されません。 | 再作成できません。`build` で作り直せなくなります。 |
-| `data/<source-id>/releases/` | blob 名に対応する、現在の公開用画像 | 同期済みであれば `pull` で復元できます。 |
+| `data/<source-id>/releases/` | オブジェクトキーに対応する、現在の公開用画像 | 同期済みであれば `pull` で復元できます。 |
 | `data/<source-id>/notes/` | 画像ノートと Obsidian Bases のビュー | 利用者が書いた説明と本文は再作成できません。 |
 | `data/<source-id>/catalog/` | アセット ID と、ファイル同士の対応 | アセット ID と、原本との対応を失います。 |
 | `data/<source-id>/provenance/` | 失敗したものを含む、処理の記録 | `recover` で復旧できなくなります。 |
@@ -557,33 +627,38 @@ tkn-azure-blob-note pull --source my-obj-storage-2 --dry-run
 ## 7. 対応範囲と制限
 
 - 画像だけを管理します。汎用のファイルや動画は扱いません。
-- Azure 上の blob を削除しません。また、公開済みの blob 名を自動で変更しません。
+- クラウド上のオブジェクトを削除しません。また、公開済みのオブジェクトキーを自動で変更しません。
 - 保存期間の管理や、古いデータの自動削除は行いません。
-- 生成 AI のサービスを呼び出しません。
+- 生成 AI のサービスを呼び出しません。`tkn-img-note` の VLM 説明文を自動で取り込む機能は未実装です。ノート本文へ記入した説明は保持します。
+- S3/R2 のアップロードは1画像あたり 5,000,000,000 bytes 以下です。条件付きの単一 PUT を使い、multipart upload は行いません。
+- S3 は通常の汎用バケットを対象とします。S3 Express / Directory bucket、Access Point ARN は対象外です。
+- S3/R2 の一覧取得では各画像の HEAD も行い、転送確認では GET してハッシュを計算します。API 呼び出し・転送の料金に影響します。
 - RDF データベースは持ちません。処理の記録は、将来のグラフ形式への書き出しに使える構造で保存しています。
 - 同期は、更新日時だけで内容が同じだと判断しません。必要に応じて内容を読み取り、ハッシュ値で比較します。
-- ノートの `syncStatus: synced` は、最後に完了した転送の記録です。現在の Azure の状態は、`status --remote` または `verify --remote` で確認します。
+- ノートの `syncStatus: synced` は、最後に完了した転送の記録です。現在のクラウドの状態は、`status --remote` または `verify --remote` で確認します。
 
 ## 8. 更新と保守
 
 ソース、同梱ファイル、依存パッケージを更新した後は、再インストールします。
 
 ```shell
-cd "C:\path\to\tkn_azure_blob_note"
+cd "C:\path\to\tkn_object_storage_catalog"
 uv tool install . --reinstall
-tkn-azure-blob-note --version
+tkn-object-storage-catalog --version
 ```
 
 リポジトリのフォルダーを移動または改名した後も、新しい場所で同じ再インストールを実行します。
 uv が記録しているソースのパスが更新されます。
-コマンド名と、`~/.tkn/azure_blob_note/` の保存領域は変わりません。
+コマンド名と、`~/.tkn/object_storage_catalog/` の保存領域は変わりません。
+
+旧名でインストールしていた場合は、新名でインストールした後に `uv tool uninstall tkn-azure-blob-note` で旧コマンドを削除できます。旧コマンドの別名は提供しません。ユーザーデータはこの操作では削除されません。
 
 変更履歴は [CHANGELOG.md](CHANGELOG.md) を参照します。
 
 ## 9. 開発と検証
 
 ```shell
-cd "C:\path\to\tkn_azure_blob_note"
+cd "C:\path\to\tkn_object_storage_catalog"
 uv sync --locked
 uv run pytest
 uv run ruff check .
@@ -592,8 +667,8 @@ uv build
 ```
 
 > [!NOTE]
-> テストは、一時フォルダーのデータと、Blob Storage を模した処理を使います。
-> 実際のストレージ アカウントには書き込まないため、Azure との実接続の動作はテストでは保証されません。
+> テストは、一時フォルダーのデータ、ストレージを模した処理、AWS SDK の応答スタブを使います。
+> 実際のストレージ アカウントには書き込まないため、Azure/S3/R2 との実接続の動作はテストでは保証されません。
 
 - パッケージは `src` レイアウトで、ノートと設定のひな形を wheel と sdist に含めます。インストール後の実行は、このリポジトリのフォルダーに依存しません。
 - ソースの変更をすぐに反映したい場合は、`uv tool install -e . --reinstall` で editable インストールにします。

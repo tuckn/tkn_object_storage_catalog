@@ -17,8 +17,10 @@ from .config import Config, resource
 from .errors import AppError, ConflictError
 from .io import atomic_bytes, sha256, within
 
-BEGIN = "<!-- azure-blob-note:begin -->"
-END = "<!-- azure-blob-note:end -->"
+BEGIN = "<!-- object-storage-catalog:begin -->"
+END = "<!-- object-storage-catalog:end -->"
+LEGACY_BEGIN = "<!-- azure-blob-note:begin -->"
+LEGACY_END = "<!-- azure-blob-note:end -->"
 
 
 def split_note(text: str) -> tuple[CommentedMap, str]:
@@ -46,16 +48,29 @@ def serialize(data: CommentedMap, body: str) -> str:
 
 
 def urls(config: Config, relative: str) -> tuple[str | None, str | None]:
-    azure = config.azure
-    blob = None
-    if azure["account_url"] and azure["container"]:
-        name = "/".join(part for part in (azure["prefix"], relative) if part)
-        blob = (
-            f"{azure['account_url']}/{quote(azure['container'], safe='$')}/{quote(name, safe='/')}"
-        )
+    storage = config.storage
+    name = "/".join(part for part in (storage["prefix"], relative) if part)
+    object_url = None
+    if config.provider == "azure":
+        if storage["account_url"] and storage["container"]:
+            object_url = f"{storage['account_url']}/{quote(storage['container'], safe='$')}/{quote(name, safe='/')}"
+    elif storage["bucket"]:
+        endpoint = storage["endpoint_url"]
+        if config.provider == "s3" and not endpoint:
+            region = storage["region"]
+            domain = "amazonaws.com.cn" if region and region.startswith("cn-") else "amazonaws.com"
+            endpoint = f"https://s3.{region}.{domain}" if region else "https://s3.amazonaws.com"
+        if endpoint:
+            object_url = f"{endpoint}/{quote(storage['bucket'], safe='')}/{quote(name, safe='/')}"
     base = config.delivery["url_base"]
-    delivery = f"{base}/{quote(relative, safe='/')}" if base else blob
-    return blob, delivery
+    # An R2 S3 API endpoint is not a browser delivery URL. Use a configured public
+    # domain for that link, otherwise keep the note's local preview only.
+    delivery = (
+        f"{base}/{quote(relative, safe='/')}"
+        if base
+        else (None if config.provider == "r2" else object_url)
+    )
+    return object_url, delivery
 
 
 def find_note(config: Config, record: Record) -> Path:
@@ -89,8 +104,11 @@ def render_note(
         )
     if data.get("assetId") not in {None, record["asset_id"]}:
         raise ConflictError("Proxy note belongs to a different asset.")
-    if data.get("schemaVersion") not in {None, "1.0.0"}:
+    if data.get("schemaVersion") not in {None, "1.0.0", "2.0.0"}:
         raise AppError("Unsupported note schemaVersion; refusing to rewrite.")
+    for old in ("blobName", "blobUrl"):
+        if data.get("schemaVersion") == "1.0.0":
+            data.pop(old, None)
     data.setdefault("type", "image")
     data.setdefault("title", Path(record["relative_path"]).stem)
     data.setdefault("description", "")
@@ -101,7 +119,7 @@ def render_note(
     image = Catalog(config).release(record)
     blob, url = urls(config, record["relative_path"])
     managed: dict[str, Any] = {
-        "schemaVersion": "1.0.0",
+        "schemaVersion": "2.0.0",
         "assetId": record["asset_id"],
         "noteId": record["note_id"],
         "localPath": str(image),
@@ -112,8 +130,9 @@ def render_note(
         "sourceSha256": source["sha256"] if source else None,
         "sha256": record["release"]["sha256"],
         "bytes": record["release"]["bytes"],
-        "blobName": "/".join(x for x in (config.azure["prefix"], record["relative_path"]) if x),
-        "blobUrl": blob,
+        "storageProvider": config.provider,
+        "objectKey": "/".join(x for x in (config.storage["prefix"], record["relative_path"]) if x),
+        "objectUrl": blob,
         "url": url,
         "cover": (
             "releases/" + record["relative_path"]
@@ -140,6 +159,20 @@ def render_note(
         remote_link=("\n\n[Remote image (access permissions apply)](" + url + ")") if url else "",
     )
     generated = content[content.index(BEGIN) : content.index(END) + len(END)]
+    if LEGACY_BEGIN in body or LEGACY_END in body:
+        if BEGIN in body or END in body:
+            raise AppError("Mixed generated-note markers; repair them before refreshing.")
+        if (
+            body.count(LEGACY_BEGIN) != 1
+            or body.count(LEGACY_END) != 1
+            or body.index(LEGACY_BEGIN) > body.index(LEGACY_END)
+        ):
+            raise AppError("Malformed generated-note markers; repair them before refreshing.")
+        body = (
+            body[: body.index(LEGACY_BEGIN)]
+            + generated
+            + body[body.index(LEGACY_END) + len(LEGACY_END) :]
+        )
     if not body.strip():
         body = content
     elif BEGIN in body or END in body:

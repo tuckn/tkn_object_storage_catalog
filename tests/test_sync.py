@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from tkn_azure_blob_note.catalog import Catalog, Operation
-from tkn_azure_blob_note.errors import AppError, ConflictError
-from tkn_azure_blob_note.images import build_images
-from tkn_azure_blob_note.sync import pull, push, status, verify
+from tkn_object_storage_catalog.catalog import Catalog, Operation
+from tkn_object_storage_catalog.errors import AppError, ConflictError
+from tkn_object_storage_catalog.images import build_images
+from tkn_object_storage_catalog.sync import pull, push, status, verify
 
 
 def run_push(cfg, blobs, **kwargs):

@@ -14,18 +14,24 @@ from ruamel.yaml.error import YAMLError
 from .errors import AppError, ConflictError
 from .io import atomic_bytes, check_schema, now, safe_relative, sha256
 
-APPLICATION_ID = "azure_blob_note"
-CONFIG_SCHEMA_VERSION = "2.0.0"
+APPLICATION_ID = "object_storage_catalog"
+CONFIG_SCHEMA_VERSION = "3.0.0"
 DEFAULT_SOURCE_ID = "my-obj-storage-1"
 LEGACY_SOURCE_ID = "images"
 
 
 def resource(name: str) -> str:
-    return files("tkn_azure_blob_note").joinpath("resources", name).read_text(encoding="utf-8")
+    return (
+        files("tkn_object_storage_catalog").joinpath("resources", name).read_text(encoding="utf-8")
+    )
 
 
 def user_root() -> Path:
     return Path.home() / ".tkn" / APPLICATION_ID
+
+
+def legacy_root() -> Path:
+    return Path.home() / ".tkn" / "azure_blob_note"
 
 
 def flatten(value: dict[str, Any], prefix: str = "") -> dict[str, Any]:
@@ -85,7 +91,27 @@ def validate_part(value: dict[str, Any], defaults: dict[str, Any], label: str) -
             and not re.fullmatch(r"[a-z0-9](?:[a-z0-9]|-(?!-)){1,61}[a-z0-9]", container)
         ):
             raise AppError(f"{label}: invalid Azure container name.")
-    for key in ("azure.account_url", "delivery.url_base"):
+    if "provider" in value and value["provider"] not in {"azure", "s3", "r2"}:
+        raise AppError(f"{label}: provider must be azure, s3, or r2.")
+    if "s3" in value:
+        s = value["s3"]
+        if s.get("timeout_seconds", 60) <= 0:
+            raise AppError(f"{label}: timeout_seconds must be positive.")
+        if s.get("prefix"):
+            safe_relative(s["prefix"].rstrip("/"))
+        bucket = s.get("bucket")
+        if bucket is not None and (
+            not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", bucket)
+            or ".." in bucket
+            or re.fullmatch(r"\d+\.\d+\.\d+\.\d+", bucket)
+        ):
+            raise AppError(f"{label}: invalid S3/R2 bucket name.")
+        for key in ("profile", "region"):
+            if s.get(key) is not None and not s[key].strip():
+                raise AppError(f"{label}: s3.{key} must not be empty.")
+        if s.get("region") and not re.fullmatch(r"[a-z0-9-]+", s["region"]):
+            raise AppError(f"{label}: invalid s3.region.")
+    for key in ("azure.account_url", "s3.endpoint_url", "delivery.url_base"):
         item = flatten(value).get(key)
         if item is not None:
             url = urlsplit(item)
@@ -98,8 +124,25 @@ def validate_part(value: dict[str, Any], defaults: dict[str, Any], label: str) -
                 or url.fragment
             ):
                 raise AppError(f"{label}: {key} must be HTTPS without credentials/query/fragment.")
-            if key == "azure.account_url" and url.path not in {"", "/"}:
-                raise AppError(f"{label}: account_url must not include a container or path.")
+            if key != "delivery.url_base" and url.path not in {"", "/"}:
+                raise AppError(f"{label}: {key} must not include a container, bucket, or path.")
+    validate_provider(value, label)
+
+
+def validate_provider(value: dict[str, Any], label: str) -> None:
+    provider = value.get("provider", "azure")
+    settings = value.get("s3", {})
+    if provider == "r2":
+        endpoint = settings.get("endpoint_url")
+        host = urlsplit(endpoint).hostname if endpoint else None
+        if host and not re.fullmatch(
+            r"[a-f0-9]{32}(?:\.(?:eu|fedramp))?\.r2\.cloudflarestorage\.com", host
+        ):
+            raise AppError(f"{label}: r2 requires its account S3 API endpoint.")
+        if settings.get("region") not in {None, "auto"}:
+            raise AppError(f"{label}: r2 region must be auto.")
+    elif provider == "s3" and settings.get("region") == "auto":
+        raise AppError(f"{label}: auto is an R2 region, not an AWS region.")
 
 
 def merge(target: dict[str, Any], source: dict[str, Any]) -> None:
@@ -128,15 +171,17 @@ def normalize_layer(
         legacy_defaults = {
             "schema_version": "1.0.0",
             **defaults,
-            "data_root": str(user_root() / "data"),
-            "state_root": str(user_root() / "state"),
+            "data_root": str(legacy_root() / "data"),
+            "state_root": str(legacy_root() / "state"),
         }
         validate_part(value, legacy_defaults, label)
         # Preserve existing storage locations; loading never moves data or rewrites YAML.
         legacy = {key: item for key, item in value.items() if key != "schema_version"}
         return {"sources": {LEGACY_SOURCE_ID: legacy}}, True
-    if (major, minor) != (2, 0):
-        raise AppError(f"{label}: unsupported config schema {version}; supported schema is 2.0.x.")
+    if (major, minor) not in {(2, 0), (3, 0)}:
+        raise AppError(
+            f"{label}: unsupported config schema {version}; supported schema is 3.0.x (also reads 1.0.x/2.0.x)."
+        )
     for key in value:
         if key not in {"schema_version", "sources"}:
             raise AppError(f"{label}: move {key} into sources.<source-id>.{key}.")
@@ -145,11 +190,16 @@ def normalize_layer(
     sources = value["sources"]
     if not isinstance(sources, dict):
         raise AppError(f"{label}: sources must be a mapping.")
+    sources = deepcopy(sources)
     for source_id, settings in sources.items():
         validate_source_id(source_id, label)
         if not isinstance(settings, dict):
             raise AppError(f"{label}: sources.{source_id} must be a mapping.")
         validate_part(settings, defaults, f"{label}.sources.{source_id}")
+        if major == 2:
+            for key, folder in (("data_root", "data"), ("state_root", "state")):
+                if settings.get(key) is None:
+                    settings[key] = str(legacy_root() / folder / source_id)
     return {"sources": deepcopy(sources)}, False
 
 
@@ -163,9 +213,11 @@ def resolve_source(settings: dict[str, Any], source_id: str, cwd: Path) -> None:
         path = path.expanduser()
         settings[key] = str((path if path.is_absolute() else cwd / path).resolve())
     settings["azure"]["prefix"] = settings["azure"]["prefix"].rstrip("/")
-    for group, key in (("azure", "account_url"), ("delivery", "url_base")):
+    settings["s3"]["prefix"] = settings["s3"]["prefix"].rstrip("/")
+    for group, key in (("azure", "account_url"), ("s3", "endpoint_url"), ("delivery", "url_base")):
         if settings[group][key]:
             settings[group][key] = settings[group][key].rstrip("/")
+    validate_provider(settings, f"sources.{source_id}")
     data, state, notes = (Path(settings[k]) for k in ("data_root", "state_root", "notes_root"))
     if overlaps(data, state):
         raise AppError(f"sources.{source_id}: data_root and state_root must be separate trees.")
@@ -182,15 +234,18 @@ def overlaps(first: Path, second: Path) -> bool:
 
 def validate_isolation(sources: dict[str, Any]) -> None:
     previous: list[tuple[str, dict[str, Any]]] = []
-    containers: dict[tuple[str, str], str] = {}
+    containers: dict[tuple[str, str, str], str] = {}
     for source_id, settings in sources.items():
-        azure = settings["azure"]
-        if azure["account_url"] and azure["container"]:
-            target = (azure["account_url"].lower(), azure["container"])
+        provider = settings["provider"]
+        storage = settings["azure"] if provider == "azure" else settings["s3"]
+        endpoint = storage.get("account_url") if provider == "azure" else storage["endpoint_url"]
+        bucket = storage.get("container") if provider == "azure" else storage["bucket"]
+        if bucket:
+            target = (provider, (endpoint or "aws").lower(), bucket)
             if target in containers:
                 raise AppError(
-                    f"sources.{source_id} and sources.{containers[target]} use the same container; "
-                    "one container must belong to one source, even with different prefixes."
+                    f"sources.{source_id} and sources.{containers[target]} use the same container/bucket; "
+                    "one container or bucket must belong to one source, even with different prefixes."
                 )
             containers[target] = source_id
         for other_id, other in previous:
@@ -250,6 +305,30 @@ class Config:
         return cast(dict[str, Any], self.source_values["azure"])
 
     @property
+    def provider(self) -> str:
+        return cast(str, self.source_values["provider"])
+
+    @property
+    def s3(self) -> dict[str, Any]:
+        return cast(dict[str, Any], self.source_values["s3"])
+
+    @property
+    def storage(self) -> dict[str, Any]:
+        return self.azure if self.provider == "azure" else self.s3
+
+    @property
+    def target_identity(self) -> dict[str, Any]:
+        if self.provider == "azure":
+            # Keep the original fingerprint so existing Azure baselines remain usable.
+            return {key: self.azure[key] for key in ("account_url", "container", "prefix")}
+        return {
+            "provider": self.provider,
+            "endpoint_url": (self.s3["endpoint_url"] or "aws").lower(),
+            "bucket": self.s3["bucket"],
+            "prefix": self.s3["prefix"],
+        }
+
+    @property
     def conversion(self) -> dict[str, Any]:
         return cast(dict[str, Any], self.source_values["conversion"])
 
@@ -276,7 +355,10 @@ def load_config(
     source: str | None = None,
 ) -> Config:
     cwd = (cwd or Path.cwd()).resolve()
-    home = home or user_root()
+    if home is None:
+        home = user_root()
+        if not (home / "config.yaml").exists() and (legacy_root() / "config.yaml").exists():
+            home = legacy_root()
     packaged = parse_yaml(resource("config.example.yaml"), "built-in")
     defaults = packaged["sources"][DEFAULT_SOURCE_ID]
     normalize_layer(packaged, defaults, "built-in")
@@ -299,8 +381,8 @@ def load_config(
                 if not legacy_active:
                     values["sources"] = {LEGACY_SOURCE_ID: deepcopy(defaults)}
                     values["sources"][LEGACY_SOURCE_ID].update(
-                        data_root=str(user_root() / "data"),
-                        state_root=str(user_root() / "state"),
+                        data_root=str(legacy_root() / "data"),
+                        state_root=str(legacy_root() / "state"),
                     )
                     origins = {
                         key: item for key, item in origins.items() if not key.startswith("sources")
@@ -331,7 +413,11 @@ def load_config(
                     origins["sources"] = str(path)
                 legacy_active = False
         loaded.append(
-            {"source": str(path), "schema_version": raw["schema_version"], "migrated": migrated}
+            {
+                "source": str(path),
+                "schema_version": raw["schema_version"],
+                "migrated": migrated or raw["schema_version"].startswith("2."),
+            }
         )
     config = Config(values, loaded, origins)
     if source is not None or len(config.sources) == 1:

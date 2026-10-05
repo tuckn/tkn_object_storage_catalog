@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from tkn_azure_blob_note.catalog import Catalog
-from tkn_azure_blob_note.errors import AppError
+from tkn_object_storage_catalog.catalog import Catalog
+from tkn_object_storage_catalog.errors import AppError
 
 
 @pytest.mark.parametrize(

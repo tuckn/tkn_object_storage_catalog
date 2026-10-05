@@ -1,23 +1,32 @@
 # Merge order: defaults, user, CWD, --config, CLI options.
 # A sources mapping replaces the preceding layer's entire sources mapping.
-schema_version: "2.0.0"
-# Source IDs are custom labels, independent of account and container names.
-# Rename my-obj-storage-1 to a name that identifies your container.
-# Add another source at the same indentation level for another container.
+schema_version: "3.0.0"
+# Source IDs are custom labels, independent of account/container/bucket names.
+# One source manages one Azure container, AWS S3 bucket, or Cloudflare R2 bucket.
 sources:
   my-obj-storage-1:
-    # null uses ~/.tkn/azure_blob_note/data/<source-id>
+    # null uses ~/.tkn/object_storage_catalog/data/<source-id>
     data_root: null
-    # null uses ~/.tkn/azure_blob_note/state/<source-id>
+    # null uses ~/.tkn/object_storage_catalog/state/<source-id>
     state_root: null
     # null uses <data_root>/notes; or choose a directory inside your Vault.
     notes_root: null
+    provider: azure # azure | s3 | r2
     azure:
       account_url: null
       container: null
       prefix: ""
       auth: azure_cli
       managed_identity_client_id: null
+      timeout_seconds: 60
+    # Used by both s3 and r2. Credentials come from the SDK environment/profile,
+    # never from this file. R2 requires its S3 API endpoint and uses region auto.
+    s3:
+      bucket: null
+      region: null
+      endpoint_url: null
+      prefix: ""
+      profile: null
       timeout_seconds: 60
     delivery:
       # Generates links only. Does not provision DNS/TLS or change access permissions.
@@ -30,16 +39,18 @@ sources:
       lossless: false
       strip_metadata: true
 
-  # Example of a second source: uncomment and set its account/container.
+  # Example of an AWS S3 source: uncomment and set its bucket/region/profile.
   # Multiple active sources require --source <source-id> for data commands.
-  # Each account/container pair must be unique across sources.
+  # Each container/bucket must be unique across sources, even with different prefixes.
   # my-obj-storage-2:
   #   data_root: null
   #   state_root: null
   #   notes_root: null
-  #   azure:
-  #     account_url: https://examplestorage.blob.core.windows.net
-  #     container: another-container
+  #   provider: s3
+  #   s3:
+  #     bucket: example-images
+  #     region: ap-northeast-1
+  #     profile: default
   #   delivery:
   #     url_base: null
   #   conversion:

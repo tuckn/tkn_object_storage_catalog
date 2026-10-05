@@ -3,19 +3,19 @@ from __future__ import annotations
 import hashlib
 from copy import deepcopy
 
-from .azure import BlobStore
 from .catalog import Catalog, Operation, Record, make_record
 from .config import Config
 from .errors import AppError, ConflictError
 from .io import IMAGE_EXTENSIONS, atomic_bytes, now, sha256, within
 from .notes import find_note, refresh_note, split_note, urls
+from .storage import ObjectStore
 
 
 def push(
     config: Config,
     selectors: list[str],
     operation: Operation,
-    blobs: BlobStore,
+    blobs: ObjectStore,
     *,
     overwrite: bool = False,
     yes: bool = False,
@@ -58,6 +58,8 @@ def push(
                     f"Remote was deleted since last sync: {relative}; use --overwrite to recreate."
                 )
             action = "created"
+        if action != "unchanged":
+            blobs.validate_upload(catalog.release(record))
         plans.append((record, remote, action))
     changes = any(action != "unchanged" for _, _, action in plans)
     if changes and not operation.dry_run and not yes:
@@ -102,7 +104,7 @@ def pull(
     config: Config,
     selectors: list[str],
     operation: Operation,
-    blobs: BlobStore,
+    blobs: ObjectStore,
     *,
     overwrite: bool = False,
     yes: bool = False,
@@ -118,7 +120,7 @@ def pull(
     remote_items = blobs.list()
     available = {r["relative_path"] for r in remote_items}
     if selected - available:
-        raise AppError("Some selected blobs do not exist in this configured scope.")
+        raise AppError("Some selected objects do not exist in this configured scope.")
     plans = []
     for remote in remote_items:
         relative = remote["relative_path"]
@@ -166,7 +168,7 @@ def pull(
             if action != "unchanged":
                 content = blobs.download(relative, remote["etag"])
                 if hashlib.sha256(content).hexdigest() != remote_hash:
-                    raise ConflictError("Downloaded bytes did not match the inspected blob.")
+                    raise ConflictError("Downloaded bytes did not match the inspected object.")
                 if record:
                     catalog.archive_release(record)
                     record = deepcopy(record)
@@ -212,7 +214,7 @@ def pull(
     return result
 
 
-def status(config: Config, *, blobs: BlobStore | None = None) -> list[Record]:
+def status(config: Config, *, blobs: ObjectStore | None = None) -> list[Record]:
     catalog = Catalog(config)
     remote = {r["relative_path"]: r for r in blobs.list()} if blobs else {}
     result = []
@@ -251,7 +253,7 @@ def status(config: Config, *, blobs: BlobStore | None = None) -> list[Record]:
     return result
 
 
-def verify(config: Config, *, blobs: BlobStore | None = None) -> list[Record]:
+def verify(config: Config, *, blobs: ObjectStore | None = None) -> list[Record]:
     catalog = Catalog(config)
     result = []
     known = set()
