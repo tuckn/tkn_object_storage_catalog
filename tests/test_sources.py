@@ -9,7 +9,7 @@ from ruamel.yaml import YAML
 
 import tkn_azure_blob_note.cli as cli
 from tkn_azure_blob_note.catalog import Catalog, Operation
-from tkn_azure_blob_note.config import load_config
+from tkn_azure_blob_note.config import load_config, resource
 from tkn_azure_blob_note.errors import AppError
 from tkn_azure_blob_note.images import import_images
 from tkn_azure_blob_note.sync import push
@@ -58,14 +58,14 @@ def snapshot(root):
 
 def test_named_defaults_and_readonly_report(tmp_path):
     config = load_config()
-    assert config.source_id == "images"
-    assert config.data_root == tmp_path / "home/.tkn/azure_blob_note/data/images"
-    assert config.state_root == tmp_path / "home/.tkn/azure_blob_note/state/images"
+    assert config.source_id == "my-obj-storage-1"
+    assert config.data_root == tmp_path / "home/.tkn/azure_blob_note/data/my-obj-storage-1"
+    assert config.state_root == tmp_path / "home/.tkn/azure_blob_note/state/my-obj-storage-1"
     assert config.notes_root == config.data_root / "notes"
     report = config.report()
     assert report["config"]["schema_version"] == "2.0.0"
     assert report["effective_schema_version"] == "2.0.0"
-    assert report["selected_source"] == "images"
+    assert report["selected_source"] == "my-obj-storage-1"
     assert not (tmp_path / "home").exists()
 
 
@@ -380,3 +380,20 @@ def test_empty_sources_can_be_listed_but_not_selected(tmp_path):
     assert config.report()["config"]["sources"] == {}
     with pytest.raises(AppError, match="Specify --source"):
         config.select_source()
+
+
+def test_template_has_custom_source_id_and_valid_second_source_example(tmp_path):
+    example = resource("config.example.yaml")
+    active = YAML(typ="safe").load(example)
+    assert set(active["sources"]) == {"my-obj-storage-1"}
+    enabled = example.replace("  # my-obj-storage-2:", "  my-obj-storage-2:")
+    enabled = "\n".join(
+        line.replace("  #   ", "    ", 1) if line.startswith("  #   ") else line
+        for line in enabled.splitlines()
+    )
+    path = tmp_path / "two-sources.yaml"
+    path.write_text(enabled, encoding="utf-8")
+    config = load_config(path)
+    assert set(config.sources) == {"my-obj-storage-1", "my-obj-storage-2"}
+    assert config.source_id is None
+    assert config.select_source("my-obj-storage-2").data_root.name == "my-obj-storage-2"

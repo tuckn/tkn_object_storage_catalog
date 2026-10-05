@@ -16,7 +16,8 @@ from .io import atomic_bytes, check_schema, now, safe_relative, sha256
 
 APPLICATION_ID = "azure_blob_note"
 CONFIG_SCHEMA_VERSION = "2.0.0"
-DEFAULT_SOURCE_ID = "images"
+DEFAULT_SOURCE_ID = "my-obj-storage-1"
+LEGACY_SOURCE_ID = "images"
 
 
 def resource(name: str) -> str:
@@ -133,7 +134,7 @@ def normalize_layer(
         validate_part(value, legacy_defaults, label)
         # Preserve existing storage locations; loading never moves data or rewrites YAML.
         legacy = {key: item for key, item in value.items() if key != "schema_version"}
-        return {"sources": {DEFAULT_SOURCE_ID: legacy}}, True
+        return {"sources": {LEGACY_SOURCE_ID: legacy}}, True
     if (major, minor) != (2, 0):
         raise AppError(f"{label}: unsupported config schema {version}; supported schema is 2.0.x.")
     for key in value:
@@ -296,8 +297,8 @@ def load_config(
         if "sources" in layer:
             if migrated:
                 if not legacy_active:
-                    values["sources"] = {DEFAULT_SOURCE_ID: deepcopy(defaults)}
-                    values["sources"][DEFAULT_SOURCE_ID].update(
+                    values["sources"] = {LEGACY_SOURCE_ID: deepcopy(defaults)}
+                    values["sources"][LEGACY_SOURCE_ID].update(
                         data_root=str(user_root() / "data"),
                         state_root=str(user_root() / "state"),
                     )
@@ -307,10 +308,10 @@ def load_config(
                     origins.update(
                         {key: "built-in" for key in flatten(values["sources"], "sources")}
                     )
-                settings = layer["sources"][DEFAULT_SOURCE_ID]
-                merge(values["sources"][DEFAULT_SOURCE_ID], settings)
+                settings = layer["sources"][LEGACY_SOURCE_ID]
+                merge(values["sources"][LEGACY_SOURCE_ID], settings)
                 origins.update(
-                    {key: str(path) for key in flatten(settings, f"sources.{DEFAULT_SOURCE_ID}")}
+                    {key: str(path) for key in flatten(settings, f"sources.{LEGACY_SOURCE_ID}")}
                 )
                 legacy_active = True
             else:

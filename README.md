@@ -136,7 +136,7 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 tkn-azure-blob-note --version
 ```
 
-`tkn-azure-blob-note 0.2.0` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-azure-blob-note 0.2.1` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
 コマンドとオプションの一覧は `tkn-azure-blob-note --help` で確認できます。
@@ -163,15 +163,15 @@ tkn-azure-blob-note config list
 ```yaml
 schema_version: "2.0.0"
 sources:
-  images:
+  my-obj-storage-1:
     azure:
       account_url: https://examplestorage.blob.core.windows.net
       container: images
 ```
 
-`sources.images` が1つの同期対象です。1つのコンテナーに1つの source を設定します。
+`sources.my-obj-storage-1` が1つの同期対象です。1つのコンテナーに1つの source を設定します。
 `azure`、`delivery`、`conversion` と保存先は、すべて `sources.<source-id>` の中に書きます。
-既定の source 名は `images` です。
+source ID は自由に付ける名前です。ひな形では `my-obj-storage-1` を使います。
 
 `account_url` と `container` は、実在するストレージ アカウントとコンテナーの値に置き換えます。
 編集後にもう一度 `tkn-azure-blob-note config list` を実行し、値が反映されたことを確認します。
@@ -212,7 +212,7 @@ tkn-azure-blob-note import "C:\path\to\photo.png"
 ```json
 {
   "command": "import",
-  "source_id": "images",
+  "source_id": "my-obj-storage-1",
   "dry_run": false,
   "run_id": "<run-id>",
   "result": [
@@ -258,7 +258,7 @@ tkn-azure-blob-note verify --remote
 
 **4. Obsidian でノートを開きます（任意）。**
 
-データ保存領域（既定では `~/.tkn/azure_blob_note/data/images`）を Obsidian の Vault として開き、`notes` フォルダーのノートを開きます。
+データ保存領域（既定では `~/.tkn/azure_blob_note/data/my-obj-storage-1`）を Obsidian の Vault として開き、`notes` フォルダーのノートを開きます。
 既定の配置では、ノートと手元の画像が同じ Vault に入るため、ノート内に画像が表示されます。
 `description`、`tags`、`nouns`、`domains`、`projects` と本文を自由に編集します。
 
@@ -387,9 +387,9 @@ source が1つなら自動で選びます。複数ある場合、データを扱
 `--source <id>` を指定します。アセットの省略は、その source 内の全アセットを意味します。
 
 ```shell
-tkn-azure-blob-note import --source images "C:\path\to\photo.png"
-tkn-azure-blob-note push --source images --dry-run
-tkn-azure-blob-note status --source images
+tkn-azure-blob-note import --source my-obj-storage-1 "C:\path\to\photo.png"
+tkn-azure-blob-note push --source my-obj-storage-1 --dry-run
+tkn-azure-blob-note status --source my-obj-storage-1
 ```
 
 `--source` はサブコマンドの前後どちらにも書けます。
@@ -477,7 +477,7 @@ Azure の認証ライブラリは、このツールの保存領域の外に、�
 
 ```yaml
 sources:
-  images:
+  my-obj-storage-1:
     notes_root: 'C:\path\to\vault\images'
 ```
 
@@ -490,12 +490,13 @@ Obsidian 上で画像がプレビュー表示されるかどうかは、利用�
 ### 5.3. 複数のコンテナーを管理する
 
 次は、同じアカウント内の2つのコンテナーを、別々の source として管理する設定です。
+`my-obj-storage-1` と `my-obj-storage-2` は例示用の名前で、アカウント名・コンテナー名とは独立して付けられます。
 `delivery` と `conversion` は source ごとに変えられます。
 
 ```yaml
 schema_version: "2.0.0"
 sources:
-  images:
+  my-obj-storage-1:
     azure:
       account_url: https://examplestorage.blob.core.windows.net
       container: images
@@ -504,7 +505,7 @@ sources:
     conversion:
       enabled: true
       quality: 82
-  private-images:
+  my-obj-storage-2:
     azure:
       account_url: https://examplestorage.blob.core.windows.net
       container: private-images
@@ -512,13 +513,13 @@ sources:
       enabled: false
 ```
 
-保存先を省略した場合、`images` は `~/.tkn/azure_blob_note/data/images/`、
-`private-images` は `~/.tkn/azure_blob_note/data/private-images/` に保存されます。
+保存先を省略した場合、`my-obj-storage-1` は `~/.tkn/azure_blob_note/data/my-obj-storage-1/`、
+`my-obj-storage-2` は `~/.tkn/azure_blob_note/data/my-obj-storage-2/` に保存されます。
 同期記録とログも `~/.tkn/azure_blob_note/state/<source-id>/` に分かれます。
 
 ```shell
-tkn-azure-blob-note import --source private-images "C:\path\to\photo.png"
-tkn-azure-blob-note pull --source private-images --dry-run
+tkn-azure-blob-note import --source my-obj-storage-2 "C:\path\to\photo.png"
+tkn-azure-blob-note pull --source my-obj-storage-2 --dry-run
 ```
 
 設定ファイルを重ねる場合、後のファイルの `sources` は前の一覧全体を置き換えます。

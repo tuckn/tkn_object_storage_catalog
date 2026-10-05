@@ -1,8 +1,11 @@
 # Merge order: defaults, user, CWD, --config, CLI options.
 # A sources mapping replaces the preceding layer's entire sources mapping.
 schema_version: "2.0.0"
+# Source IDs are custom labels, independent of account and container names.
+# Rename my-obj-storage-1 to a name that identifies your container.
+# Add another source at the same indentation level for another container.
 sources:
-  images:
+  my-obj-storage-1:
     # null uses ~/.tkn/azure_blob_note/data/<source-id>
     data_root: null
     # null uses ~/.tkn/azure_blob_note/state/<source-id>
@@ -26,3 +29,18 @@ sources:
       quality: 82
       lossless: false
       strip_metadata: true
+
+  # Example of a second source: uncomment and set its account/container.
+  # Multiple active sources require --source <source-id> for data commands.
+  # Each account/container pair must be unique across sources.
+  # my-obj-storage-2:
+  #   data_root: null
+  #   state_root: null
+  #   notes_root: null
+  #   azure:
+  #     account_url: https://examplestorage.blob.core.windows.net
+  #     container: another-container
+  #   delivery:
+  #     url_base: null
+  #   conversion:
+  #     enabled: true

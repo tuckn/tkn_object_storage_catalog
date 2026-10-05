@@ -66,7 +66,7 @@ Windows の予約名（`con` など）は使えません。
 | キー | 既定値 | 意味 |
 | --- | --- | --- |
 | `schema_version` | `"2.0.0"` | 設定ファイルごとに必須です。 |
-| `sources` | `images` の1 source | source ID をキーとする設定一覧です。 |
+| `sources` | `my-obj-storage-1` の1 source | 利用者が付けた source ID をキーとする設定一覧です。ひな形には2つ目の source のコメント例もあります。 |
 | `data_root` | `~/.tkn/azure_blob_note/data/<source-id>` | 画像とノートを保存する領域です。 |
 | `state_root` | `~/.tkn/azure_blob_note/state/<source-id>` | 同期の基準、実行記録、ログを保存する領域です。 |
 | `notes_root` | `null` | 画像ノートの保存先です。`null` の場合は `<data_root>/notes` になります。 |

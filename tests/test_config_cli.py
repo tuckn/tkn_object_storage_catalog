@@ -92,7 +92,7 @@ def test_config_and_help_readonly(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     assert main(["config", "list", "--json"]) == 0
     result = json.loads(capsys.readouterr().out)
-    assert result["config"]["sources"]["images"]["notes_root"].endswith("notes")
+    assert result["config"]["sources"]["my-obj-storage-1"]["notes_root"].endswith("notes")
     assert not (tmp_path / "home").exists()
     for option in ("--help", "--version"):
         with pytest.raises(SystemExit) as stop:
@@ -110,7 +110,7 @@ def test_installed_entrypoint_outside_repository(tmp_path):
         text=True,
     )
     assert completed.returncode == 0
-    assert "tkn-azure-blob-note 0.2.0" in completed.stdout
+    assert "tkn-azure-blob-note 0.2.1" in completed.stdout
 
 
 def test_cli_import_json_and_quiet(cfg, source, capsys):
