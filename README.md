@@ -149,11 +149,9 @@ sequenceDiagram
 sequenceDiagram
     participant Originals as originals
     participant Releases as releases
-    participant History as history
     participant Notes as notes
 
     Note over Originals,Notes: build：変換設定を変更して公開用画像を作り直す場合
-    Releases->>History: 現在の photo.webp をコピー → history/＜旧画像のsha256＞/photo.webp
     Originals->>Releases: 保存済みの photo.png から再作成 → releases/photo.webp を置き換え
     Note over Originals: 原本は変更しない
     Releases->>Notes: 画像ノートを更新
@@ -168,22 +166,42 @@ sequenceDiagram
 sequenceDiagram
     participant Cloud as Object Storage
     participant Releases as releases
-    participant History as history
     participant Notes as notes
 
     Note over Cloud,Notes: pull：新規取得・復元・更新が必要な場合
-    opt releases に置き換え前の画像がある
-        Releases->>History: 旧画像をコピー → history/＜旧画像のsha256＞/photo.webp
-    end
     Cloud->>Releases: 変換せずに保存 → releases/photo.webp
     Releases->>Notes: 画像ノートを作成・更新し、同期結果を反映
 ```
 
 `pull` は `staging` や `originals` を経由せず、クラウドの画像を直接 `releases` に保存します。
 ダウンロードで新規取得・置き換えした画像には原本との対応がなく、`build` の対象になりません。既存の `originals` のファイル自体は残ります。
-手元とクラウドの内容が同じ場合は、画像の置き換えや `history` へのコピーは行いません。
+手元とクラウドの内容が同じ場合は、画像を置き換えません。
+`build` と `pull` は置き換え前の公開用画像を保存しません。旧版が必要な場合は、実行前のバックアップから戻します。
 
-画像以外の管理情報は `catalog`・`provenance`・`state_root` に保存します。各保存先の役割は「[6. 保存構造](#6-保存構造)」を参照してください。
+**管理データの流れ：ノートを読み、処理結果をノートと state に保存する**
+
+```mermaid
+sequenceDiagram
+    participant CLI as CLI
+    participant Notes as notes
+    participant Releases as releases
+    participant State as state
+
+    CLI->>State: runs に実行開始を記録し、logs にログを保存
+    CLI->>Notes: Frontmatter からID・画像の場所・ハッシュ・原本の対応を読む
+    Notes-->>CLI: 管理対象の画像情報
+    CLI->>State: 書き込む予定の情報を runs に記録
+    CLI->>Releases: 画像を検査し、必要なら作成・更新
+    opt push / pull
+        CLI->>State: 同期先ごとの基準を sync に保存
+    end
+    CLI->>Notes: 管理情報・画像リンクを更新し、説明・タグ・本文を保持
+    CLI->>State: runs に実行完了を記録
+```
+
+画像1枚の管理情報は、その画像のノートに集約します。画像のID・原本との対応・ハッシュ・変換条件の指紋は Frontmatter に保存し、CLI もここを読み取ります。ノートは説明を書く場所と管理台帳を兼ねるため、画像と一緒にバックアップしてください。
+同期基準・実行記録・復旧情報は `state` に保存します。`recover` は中断した実行の `state/runs` を読み、書き込み済みの画像と記録が一致する場合にノートへの反映を完了します。
+各保存先の役割は「[6. 保存構造](#6-保存構造)」を参照してください。
 
 ## 2. セットアップ
 
@@ -215,7 +233,7 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 tkn-objstorage-imgcatalog --version
 ```
 
-`tkn-objstorage-imgcatalog 0.5.0` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-objstorage-imgcatalog 0.6.0` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
 コマンドとオプションの一覧は `tkn-objstorage-imgcatalog --help` で確認できます。
@@ -454,7 +472,7 @@ tkn-objstorage-imgcatalog pull photo.webp --overwrite --yes
 
 > [!WARNING]
 > `--overwrite` は、コマンドの方向に沿って転送先の内容を置き換えます。
-> `pull --overwrite` で置き換えられる手元の画像は、事前に `history` フォルダーへ退避されます。
+> `pull --overwrite` は手元の画像を置き換えます。置き換え前の画像は保存されません。
 > `push --overwrite` で置き換えたクラウド側の内容を元に戻せるかどうかは、各サービスのバージョン管理やバックアップの設定に依存します。この CLI は、それらを有効にしません。
 
 `--yes` は確認を省略するためのオプションで、内容の食い違いは解決しません。
@@ -483,7 +501,7 @@ tkn-objstorage-imgcatalog recover
 tkn-objstorage-imgcatalog verify
 ```
 
-`recover` は、公開用画像の書き込みまで終わっていて、カタログとノートの更新だけが残っている処理を完了させます。
+`recover` は、公開用画像の書き込みまで終わっていて、ノートの更新だけが残っている処理を完了させます。
 記録された内容と一致する画像が手元にある場合だけ復旧し、クラウドへの書き込みは行いません。
 復旧後に、失敗したコマンドをもう一度実行します。
 アップロードが中断していた場合、再実行時に クラウド上の内容を読み取って比較し、一致していればアップロード済みとして扱います。
@@ -501,13 +519,14 @@ tkn-objstorage-imgcatalog verify
 | 設定ファイルを作成する | `config init [--path FILE] [--force]` | なし | 設定ファイル。`--force` は、編集済みのファイルをバックアップしてから置き換えます。 |
 | 有効な設定を確認する | `config list [--json]` | なし | なし |
 | 画像を取り込む | `import [PATH ...] [--name PATH] [--no-convert]` | なし | 原本、公開用画像、ノート、実行記録 |
-| 公開用画像を作り直す | `build [ASSET ...]` | なし | 公開用画像、`history`、ノート、実行記録 |
+| 公開用画像を作り直す | `build [ASSET ...]` | なし | 公開用画像、ノート、実行記録 |
 | アップロードする | `push [ASSET ...] [--overwrite] [--yes]` | クラウドの読み取りと書き込み | クラウド上のオブジェクト、同期の基準、ノート、実行記録 |
-| ダウンロードする | `pull [ASSET ...] [--overwrite] [--yes]` | クラウドの読み取り | 公開用画像、`history`、同期の基準、ノート、実行記録 |
-| ノートの自動生成項目を更新する | `notes refresh [ASSET ...]` | なし | ノート、カタログ、実行記録 |
+| ダウンロードする | `pull [ASSET ...] [--overwrite] [--yes]` | クラウドの読み取り | 公開用画像、同期の基準、ノート、実行記録 |
+| ノートの自動生成項目を更新する | `notes refresh [ASSET ...]` | なし | ノート、実行記録 |
 | 状態を確認する | `status [--remote]` | `--remote` のときクラウドの一覧取得 | なし |
 | 整合性を検査する | `verify [--remote]` | `--remote` のときクラウドから内容を読み取り | なし |
-| 中断した処理を完了させる | `recover` | なし | カタログ、ノート、実行記録 |
+| 中断した処理を完了させる | `recover` | なし | ノート、実行記録 |
+| 旧保存構造を移行する | `migrate` | なし | ノート、実行記録、移行前の控え。移行済みの旧JSONを削除 |
 
 各コマンドの引数とオプションは、`tkn-objstorage-imgcatalog <command> --help` で確認できます。
 
@@ -679,7 +698,7 @@ tkn-objstorage-imgcatalog pull --source my-obj-storage-2 --dry-run
 手動で `3.2.0` へ移行する場合は、先に `config list --json` で確認した `data_root`・`state_root`・`notes_root` を明記します。
 新しいユーザー設定を作成すると、旧ユーザー設定の自動読み込みは終了します。
 
-ノートは次に更新する際に `schemaVersion: 2.0.0` となり、`blobName` / `blobUrl` を `objectKey` / `objectUrl` に置き換え、`storageProvider` を記録します。
+旧データは「[8. 更新と保守](#8-更新と保守)」の `migrate` で移行します。ノートは `schemaVersion: 3.0.0` となり、旧 `blobName` / `blobUrl` は `objectKey` / `objectUrl` に置き換わります。
 旧自動生成ブロックも新しい名称へ置き換えます。説明・タグ・独自プロパティ・ブロック外の本文は保持します。
 
 ## 6. 保存構造
@@ -693,14 +712,11 @@ tkn-objstorage-imgcatalog pull --source my-obj-storage-2 --dry-run
 | `data/<source-id>/staging/` | 取り込み待ちの画像を置く場所（任意）。引数なしの `import` が読み取ります。 | 影響はありません。 |
 | `data/<source-id>/originals/<sha256>/` | 取り込んだ原本。変更されません。 | 再作成できません。`build` で作り直せなくなります。 |
 | `data/<source-id>/releases/` | オブジェクトキーに対応する、現在の公開用画像 | 同期済みであれば `pull` で復元できます。 |
-| `data/<source-id>/notes/` | 画像ノートと Obsidian Bases のビュー | 利用者が書いた説明と本文は再作成できません。 |
-| `data/<source-id>/catalog/` | アセット ID と、ファイル同士の対応 | アセット ID と、原本との対応を失います。 |
-| `data/<source-id>/provenance/` | 失敗したものを含む、処理の記録 | `recover` で復旧できなくなります。 |
-| `data/<source-id>/history/<sha256>/` | 置き換える前の公開用画像 | 置き換え前の内容に戻せなくなります。 |
-| `state/<source-id>/` | 同期の基準、実行ごとの記録（`runs`）、ログ（`logs`） | 同期の基準を失うと、次回の同期で内容の比較からやり直します。 |
+| `data/<source-id>/notes/` | 画像の管理情報・説明・関連をまとめたノートと Obsidian Bases のビュー | 画像ID・原本との対応・変換条件の指紋・説明・本文を失います。バックアップから復元します。 |
+| `state/<source-id>/` | 同期の基準（`sync`）、実行・復旧記録（`runs`）、ログ（`logs`）、移行前の控え（`migrations`） | 同期基準や中断からの復旧情報を失います。使い捨てのキャッシュではありません。 |
 
 バックアップでは、`data` と `state` の全体、および `notes_root` を外に置いている場合はそのフォルダーを対象にします。
-`history` と `originals` は、独立したバックアップの代わりにはなりません。
+`originals` は取り込んだ原本だけを保持します。ノートや公開用画像の旧版を含む、独立したバックアップの代わりにはなりません。
 
 ファイルの形式、識別子、同期の判定規則は、[設定とデータの取り決め](docs/reference/contracts.md)で説明します。
 
@@ -718,6 +734,21 @@ tkn-objstorage-imgcatalog pull --source my-obj-storage-2 --dry-run
 - ノートの `syncStatus: synced` は、最後に完了した転送の記録です。現在のクラウドの状態は、`status --remote` または `verify --remote` で確認します。
 
 ## 8. 更新と保守
+
+0.6.0 では、画像の管理情報をノートの Frontmatter（schemaVersion 3.0.0）に統合し、実行記録は `state/runs` に一本化しました。公開用画像の旧版を保存する `history` 機能は廃止しました。
+旧 `catalog`・`provenance` または旧形式のノートがある場合は、通常のデータ操作の前に移行が必要です。更新後、source ごとに次を実行します。
+
+```shell
+tkn-objstorage-imgcatalog migrate --source my-obj-storage-1 --dry-run
+tkn-objstorage-imgcatalog migrate --source my-obj-storage-1
+tkn-objstorage-imgcatalog verify --source my-obj-storage-1
+```
+
+`migrate --dry-run` は、ノート・画像・原本・実行記録を検証し、変更件数を表示します。クラウドには接続せず、ファイルを書き込みません。
+`migrate` は移行前のノートと旧JSONを `state/<source-id>/migrations/<run-id>/` に控えとして保存したうえで、ノートを更新し、実行記録を `state/runs` に統合します。同じ実行記録がすでにあれば重複させず、同じIDで内容が異なる場合は停止します。
+移行完了後は旧 `catalog`・`provenance` の対象JSONと空になったフォルダーを取り除きます。ID、ノートの説明・独自項目・本文、原本と公開用画像、同期基準を保持します。通常の書き込みエラーでは適用済みの変更を戻します。強制終了後は `migrate --dry-run` で確認して再実行でき、控えは手動復元にも使えます。
+旧 `history` や `legacy` に残っているファイルは自動では削除しません。これらは今後の画像管理には使用しません。
+
 
 0.4.1 でコマンド名を `tkn-object-storage-catalog` から `tkn-objstorage-imgcatalog` へ変更しました。
 0.4.2 で既定の設定・データ保存先を `~/.tkn/objstorage-imgcatalog/` に変更しました。

@@ -12,10 +12,11 @@ from azure.core.exceptions import AzureError, HttpResponseError
 from botocore.exceptions import BotoCoreError, ClientError
 
 from . import __version__
-from .catalog import Operation
+from .assets import Operation, ensure_current_layout
 from .config import flatten, init_config, legacy_root, load_config, user_root
 from .errors import AppError
 from .images import build_images, import_images
+from .migration import migrate
 from .notes import refresh_notes
 from .recovery import recover
 from .storage import open_store
@@ -102,7 +103,7 @@ def mutating(parser: argparse.ArgumentParser) -> None:
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(
         prog="tkn-objstorage-imgcatalog",
-        description="Catalog images in Azure Blob Storage, AWS S3, and Cloudflare R2 with Obsidian metadata.",
+        description="NoteStore images in Azure Blob Storage, AWS S3, and Cloudflare R2 with Obsidian metadata.",
     )
     root.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     common(root)
@@ -182,6 +183,11 @@ def parser() -> argparse.ArgumentParser:
     )
     common(recovery)
     mutating(recovery)
+    migration = sub.add_parser(
+        "migrate", help="merge legacy catalog into notes and move execution records to state"
+    )
+    common(migration)
+    mutating(migration)
     return root
 
 
@@ -243,6 +249,8 @@ def execute(args: argparse.Namespace) -> tuple[Any, int]:
         print_config(config.report())
         return None, 0
     config = config.select_source()
+    if args.command != "migrate":
+        ensure_current_layout(config)
     remote = args.command in {"push", "pull"} or getattr(args, "remote", False)
     blobs = open_store(config) if remote else None
     try:
@@ -262,8 +270,10 @@ def execute(args: argparse.Namespace) -> tuple[Any, int]:
                 args.command,
                 config.source_id,
             )
-            if args.command == "import":
-                output: Any = import_images(config, args.paths, operation, name=args.name)
+            if args.command == "migrate":
+                output: Any = migrate(config, operation)
+            elif args.command == "import":
+                output = import_images(config, args.paths, operation, name=args.name)
             elif args.command == "build":
                 output = build_images(config, args.assets, operation)
             elif args.command == "notes":

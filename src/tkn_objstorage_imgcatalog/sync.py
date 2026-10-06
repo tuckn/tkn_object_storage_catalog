@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from copy import deepcopy
 
-from .catalog import Catalog, Operation, Record, make_record
+from .assets import NoteStore, Operation, Record, make_record
 from .config import Config
 from .errors import AppError, ConflictError
 from .io import IMAGE_EXTENSIONS, atomic_bytes, now, sha256, within
@@ -20,10 +20,10 @@ def push(
     overwrite: bool = False,
     yes: bool = False,
 ) -> list[Record]:
-    catalog = Catalog(config)
+    store = NoteStore(config)
     plans = []
     remote_names = {r["relative_path"].casefold(): r["relative_path"] for r in blobs.list()}
-    for record in catalog.select(selectors):
+    for record in store.select(selectors):
         if (
             remote_names.get(record["relative_path"].casefold(), record["relative_path"])
             != record["relative_path"]
@@ -31,11 +31,11 @@ def push(
             raise ConflictError(
                 "Remote and local names differ only by case; no upload was performed."
             )
-        local_hash = catalog.check_release(record)
+        local_hash = store.check_release(record)
         refresh_note(config, record, dry_run=True)
         relative = record["relative_path"]
         remote = blobs.get(relative)
-        base = catalog.baseline(record)
+        base = store.baseline(record)
         if remote:
             remote_hash = (
                 base["sha256"]
@@ -59,7 +59,7 @@ def push(
                 )
             action = "created"
         if action != "unchanged":
-            blobs.validate_upload(catalog.release(record))
+            blobs.validate_upload(store.release(record))
         plans.append((record, remote, action))
     changes = any(action != "unchanged" for _, _, action in plans)
     if changes and not operation.dry_run and not yes:
@@ -70,7 +70,7 @@ def push(
     result = []
     for record, remote, action in plans:
         if not operation.dry_run:
-            catalog.check_release(record)
+            store.check_release(record)
             operation.event(
                 "push_prepared",
                 asset_id=record["asset_id"],
@@ -85,12 +85,11 @@ def push(
                 remote = current
             else:
                 remote = blobs.upload(
-                    record["relative_path"], catalog.release(record), record, remote
+                    record["relative_path"], store.release(record), record, remote
                 )
-                catalog.check_release(record)
-            catalog.set_baseline(record, remote)
-            refresh_note(config, record, sync_status="synced")
-            catalog.save(record)
+                store.check_release(record)
+            store.set_baseline(record, remote)
+            store.save(record, sync_status="synced")
             operation.event(
                 "pushed", asset_id=record["asset_id"], etag=remote["etag"], status=action
             )
@@ -109,8 +108,8 @@ def pull(
     overwrite: bool = False,
     yes: bool = False,
 ) -> list[Record]:
-    catalog = Catalog(config)
-    records = {r["relative_path"]: r for r in catalog.assets()}
+    store = NoteStore(config)
+    records = {r["relative_path"]: r for r in store.assets()}
     selected = set(selectors)
     for selector in list(selected):
         for candidate in records.values():
@@ -140,7 +139,7 @@ def pull(
         local_hash = sha256(target) if target.is_file() else None
         if record and local_hash and local_hash != record["release"]["sha256"] and not overwrite:
             raise ConflictError(f"Local release was manually modified: {relative}.")
-        base = catalog.baseline(record) if record else None
+        base = store.baseline(record) if record else None
         remote_hash = (
             base["sha256"]
             if base and base["etag"] == remote["etag"] and base["relative_path"] == relative
@@ -170,7 +169,6 @@ def pull(
                 if hashlib.sha256(content).hexdigest() != remote_hash:
                     raise ConflictError("Downloaded bytes did not match the inspected object.")
                 if record:
-                    catalog.archive_release(record)
                     record = deepcopy(record)
                     record["source"] = None
                     record["updated_at"] = now()
@@ -192,15 +190,13 @@ def pull(
                 record["release"]["acquired_from"] = urls(config, relative)[0]
                 operation.event("release_prepared", record=record, expected_etag=remote["etag"])
                 atomic_bytes(target, content, expected=local_hash, create_only=local_hash is None)
-                catalog.save(record)
             else:
                 current = blobs.get(relative)
                 if current is None or current["etag"] != remote["etag"]:
                     raise ConflictError("Remote changed during synchronization.")
             assert record is not None
-            catalog.set_baseline(record, remote)
-            refresh_note(config, record, sync_status="synced")
-            catalog.save(record)
+            store.set_baseline(record, remote)
+            store.save(record, sync_status="synced")
             operation.event(
                 "pulled",
                 asset_id=record["asset_id"],
@@ -215,13 +211,13 @@ def pull(
 
 
 def status(config: Config, *, blobs: ObjectStore | None = None) -> list[Record]:
-    catalog = Catalog(config)
+    store = NoteStore(config)
     remote = {r["relative_path"]: r for r in blobs.list()} if blobs else {}
     result = []
-    for record in catalog.assets():
-        path = catalog.release(record)
+    for record in store.assets():
+        path = store.release(record)
         local = sha256(path) if path.exists() else None
-        base = catalog.baseline(record)
+        base = store.baseline(record)
         other = remote.pop(record["relative_path"], None)
         item = {
             "asset_id": record["asset_id"],
@@ -254,14 +250,14 @@ def status(config: Config, *, blobs: ObjectStore | None = None) -> list[Record]:
 
 
 def verify(config: Config, *, blobs: ObjectStore | None = None) -> list[Record]:
-    catalog = Catalog(config)
+    store = NoteStore(config)
     result = []
     known = set()
-    for record in catalog.assets():
+    for record in store.assets():
         issues = []
         known.add(record["relative_path"])
         try:
-            catalog.check_release(record)
+            store.check_release(record)
         except AppError as exc:
             issues.append(str(exc))
         source = record.get("source")

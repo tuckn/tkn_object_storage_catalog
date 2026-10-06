@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-from .catalog import Catalog, Operation, Record
+from .assets import NoteStore, Operation, Record
 from .config import Config
 from .errors import ConflictError
 from .io import read_json, sha256, within
-from .notes import refresh_note
 
 
 def recover(config: Config, operation: Operation) -> list[Record]:
-    catalog = Catalog(config)
-    existing = {r["asset_id"]: r for r in catalog.assets()}
+    store = NoteStore(config)
+    existing = {r["asset_id"]: r for r in store.assets()}
     candidates: dict[str, Record] = {}
-    for path in (config.data_root / "provenance").glob("*.json"):
+    for path in (config.state_root / "runs").glob("*.json"):
         journal = read_json(path)
         if journal["run_id"] == operation.run_id or journal["status"] == "completed":
             continue
@@ -26,7 +25,7 @@ def recover(config: Config, operation: Operation) -> list[Record]:
         current = existing.get(asset_id)
         if current and current["updated_at"] > prepared["updated_at"]:
             continue
-        target = catalog.release(prepared)
+        target = store.release(prepared)
         if not target.exists() or sha256(target) != prepared["release"]["sha256"]:
             result.append(
                 {"asset_id": asset_id, "status": "skipped", "reason": "prepared_bytes_not_present"}
@@ -38,9 +37,7 @@ def recover(config: Config, operation: Operation) -> list[Record]:
             if not original.exists() or sha256(original) != source["sha256"]:
                 raise ConflictError("Original does not match the recovery record.")
         if not operation.dry_run:
-            catalog.save(prepared)
-            refresh_note(config, prepared)
-            catalog.save(prepared)
+            store.save(prepared)
             operation.event("recovered", asset_id=asset_id)
         result.append({"asset_id": asset_id, "status": "recovered"})
     return result

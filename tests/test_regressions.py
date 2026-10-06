@@ -8,8 +8,8 @@ import pytest
 from azure.core import MatchConditions
 from PIL import Image
 
+from tkn_objstorage_imgcatalog.assets import NoteStore, Operation
 from tkn_objstorage_imgcatalog.azure import AzureBlobs
-from tkn_objstorage_imgcatalog.catalog import Catalog, Operation
 from tkn_objstorage_imgcatalog.cli import main
 from tkn_objstorage_imgcatalog.config import load_config
 from tkn_objstorage_imgcatalog.errors import AppError, ConflictError
@@ -37,7 +37,7 @@ def test_azure_list_and_head_etags_report_unchanged(cfg, asset, listed_etag):
     listed = properties(listed_etag)
     assert listed["etag"] == head["etag"] == '"0x8ABC"'
     assert properties("0x8ABD")["etag"] != head["etag"]
-    Catalog(cfg).set_baseline(asset, head)
+    NoteStore(cfg).set_baseline(asset, head)
     store = Mock()
     store.list.return_value = [listed]
     assert status(cfg, blobs=store)[0]["remote"] == "unchanged"
@@ -67,8 +67,8 @@ def test_png_color_key_transparency_retained(cfg, source):
     Image.new("RGB", (8, 8), "red").save(source, transparency=(255, 0, 0))
     with Operation(cfg, "import", False) as operation:
         import_images(cfg, [source], operation)
-    record = Catalog(cfg).assets()[0]
-    with Image.open(Catalog(cfg).release(record)) as result:
+    record = NoteStore(cfg).assets()[0]
+    with Image.open(NoteStore(cfg).release(record)) as result:
         assert result.convert("RGBA").getpixel((0, 0))[3] == 0
 
 
@@ -108,7 +108,7 @@ def test_sdk_update_uses_etag_and_preserves_metadata(cfg, asset):
     current = {"etag": "revision-2"}
     adapter.get = Mock(return_value=current)
     adapter.digest = Mock(return_value=asset["release"]["sha256"])
-    adapter.upload(asset["relative_path"], Catalog(cfg).release(asset), asset, previous)
+    adapter.upload(asset["relative_path"], NoteStore(cfg).release(asset), asset, previous)
     call = adapter.container.get_blob_client.return_value.upload_blob.call_args
     assert call.kwargs["etag"] == "revision-1"
     assert call.kwargs["match_condition"] == MatchConditions.IfNotModified
@@ -122,7 +122,7 @@ def test_sdk_create_does_not_overwrite(cfg, asset):
     adapter.container = Mock()
     adapter.get = Mock(return_value={"etag": "new"})
     adapter.digest = Mock(return_value=asset["release"]["sha256"])
-    adapter.upload(asset["relative_path"], Catalog(cfg).release(asset), asset, None)
+    adapter.upload(asset["relative_path"], NoteStore(cfg).release(asset), asset, None)
     call = adapter.container.get_blob_client.return_value.upload_blob.call_args
     assert call.kwargs["overwrite"] is False
     assert adapter.name(asset["relative_path"]) == "scope/" + asset["relative_path"]
@@ -141,17 +141,17 @@ def test_sdk_download_is_conditional(cfg):
 
 
 def test_different_libraries_do_not_share_baselines(cfg, asset):
-    first = Catalog(cfg)
+    first = NoteStore(cfg)
     first.set_baseline(asset, {"etag": "remote"})
     second_cfg = deepcopy(cfg)
     second_cfg.source_values["data_root"] = str(cfg.data_root.parent / "other-library")
-    assert Catalog(second_cfg).baseline(asset) is None
+    assert NoteStore(second_cfg).baseline(asset) is None
 
 
 def test_future_note_schema_stops_push_preview(cfg, asset, blobs):
     path = find_note(cfg, asset)
     path.write_text(
-        path.read_text().replace("schemaVersion: 2.0.0", "schemaVersion: 3.0.0"), encoding="utf-8"
+        path.read_text().replace("schemaVersion: 3.0.0", "schemaVersion: 99.0.0"), encoding="utf-8"
     )
     with pytest.raises(AppError):
         with Operation(cfg, "push", True) as operation:

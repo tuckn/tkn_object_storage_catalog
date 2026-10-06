@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from PIL import Image
 
-from tkn_objstorage_imgcatalog.catalog import Catalog, Operation
+from tkn_objstorage_imgcatalog.assets import NoteStore, Operation
 from tkn_objstorage_imgcatalog.config import load_config
 from tkn_objstorage_imgcatalog.errors import AppError, ConflictError
 from tkn_objstorage_imgcatalog.images import build_images, import_images
@@ -29,18 +29,18 @@ def test_dry_run_no_files(cfg, source, tmp_path):
 
 
 def test_original_preserved_idempotent(cfg, source, asset):
-    catalog = Catalog(cfg)
+    store = NoteStore(cfg)
     original = cfg.data_root / asset["source"]["path"]
     assert original.read_bytes() == source.read_bytes()
-    assert catalog.release(asset).suffix == ".webp"
-    assert sha256(catalog.release(asset)) == asset["release"]["sha256"]
+    assert store.release(asset).suffix == ".webp"
+    assert sha256(store.release(asset)) == asset["release"]["sha256"]
     assert all(item["status"] == "valid" for item in verify(cfg))
     note = find_note(cfg, asset)
     before = note.read_bytes()
     with Operation(cfg, "import", False) as operation:
         result = import_images(cfg, [source], operation)
     assert result[0]["status"] == "unchanged"
-    assert len(catalog.assets()) == 1
+    assert len(store.assets()) == 1
     assert note.read_bytes() == before
 
 
@@ -59,7 +59,7 @@ def test_user_fields_comments_body_and_renamed_note(cfg, asset):
     assert 'customRelation: "[[Related note]]"' in updated
     assert "Do not change this." in updated
     assert not note.exists()
-    record = Catalog(cfg).assets()[0]
+    record = NoteStore(cfg).assets()[0]
     assert record["note_path"] == "human-readable-name.md"
     assert record["relative_path"] == asset["relative_path"]
 
@@ -70,11 +70,10 @@ def test_title_change_does_not_rename_blob(cfg, asset):
         note.read_text().replace("title: example", "title: A different title"), encoding="utf-8"
     )
     refresh_notes(cfg, [])
-    assert Catalog(cfg).assets()[0]["relative_path"] == "example.webp"
+    assert NoteStore(cfg).assets()[0]["relative_path"] == "example.webp"
 
 
-def test_build_retains_previous_bytes(cfg, source, asset, tmp_path):
-    old = Catalog(cfg).release(asset).read_bytes()
+def test_build_replaces_release_without_history(cfg, source, asset, tmp_path):
     changed = load_config(
         home=tmp_path / "settings",
         cwd=tmp_path,
@@ -87,7 +86,8 @@ def test_build_retains_previous_bytes(cfg, source, asset, tmp_path):
     with Operation(changed, "build", False) as operation:
         result = build_images(changed, [], operation)
     assert result[0]["status"] == "updated"
-    assert list((cfg.data_root / "history").rglob("*.webp"))[0].read_bytes() == old
+    assert not (cfg.data_root / "history").exists()
+    assert verify(changed)[0]["status"] == "valid"
     assert source.exists()
 
 
@@ -95,8 +95,8 @@ def test_conversion_disabled(cfg, source):
     cfg.conversion["enabled"] = False
     with Operation(cfg, "import", False) as operation:
         import_images(cfg, [source], operation)
-    asset = Catalog(cfg).assets()[0]
-    assert Catalog(cfg).release(asset).read_bytes() == source.read_bytes()
+    asset = NoteStore(cfg).assets()[0]
+    assert NoteStore(cfg).release(asset).read_bytes() == source.read_bytes()
 
 
 def test_animation_passes_through(cfg, source):
@@ -105,9 +105,9 @@ def test_animation_passes_through(cfg, source):
     first.save(source, save_all=True, append_images=[second], duration=100, loop=0)
     with Operation(cfg, "import", False) as operation:
         import_images(cfg, [source], operation)
-    asset = Catalog(cfg).assets()[0]
+    asset = NoteStore(cfg).assets()[0]
     assert asset["relative_path"] == "example.png"
-    assert Catalog(cfg).release(asset).read_bytes() == source.read_bytes()
+    assert NoteStore(cfg).release(asset).read_bytes() == source.read_bytes()
 
 
 def test_colliding_inputs_preflight(cfg, source):
@@ -122,7 +122,7 @@ def test_colliding_inputs_preflight(cfg, source):
 
 def test_invalid_note_schema_preserved(cfg, asset):
     path = find_note(cfg, asset)
-    content = path.read_text().replace("schemaVersion: 2.0.0", "schemaVersion: 3.0.0")
+    content = path.read_text().replace("schemaVersion: 3.0.0", "schemaVersion: 99.0.0")
     path.write_text(content, encoding="utf-8")
     with pytest.raises(AppError):
         refresh_notes(cfg, [])

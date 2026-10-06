@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tkn_objstorage_imgcatalog.catalog import Catalog, Operation
+from tkn_objstorage_imgcatalog.assets import NoteStore, Operation
 from tkn_objstorage_imgcatalog.errors import AppError, ConflictError
 from tkn_objstorage_imgcatalog.io import atomic_bytes, copy_verified, safe_relative
 from tkn_objstorage_imgcatalog.recovery import recover
@@ -59,16 +59,16 @@ def test_copy_verifies_collision(tmp_path):
 def test_prepared_commit_recovery(cfg, source, monkeypatch):
     import tkn_objstorage_imgcatalog.images as images
 
-    original_save = Catalog.save
+    original_save = NoteStore.save
 
     def failure(*args):
         raise OSError("interrupted after release commit")
 
-    monkeypatch.setattr(Catalog, "save", failure)
+    monkeypatch.setattr(NoteStore, "save", failure)
     with pytest.raises(OSError):
         with Operation(cfg, "import", False) as operation:
             images.import_images(cfg, [source], operation)
-    monkeypatch.setattr(Catalog, "save", original_save)
+    monkeypatch.setattr(NoteStore, "save", original_save)
     with Operation(cfg, "recover", False) as operation:
         result = recover(cfg, operation)
     assert result[0]["status"] == "recovered"

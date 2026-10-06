@@ -8,7 +8,7 @@ import pytest
 from ruamel.yaml import YAML
 
 import tkn_objstorage_imgcatalog.cli as cli
-from tkn_objstorage_imgcatalog.catalog import Catalog, Operation
+from tkn_objstorage_imgcatalog.assets import NoteStore, Operation
 from tkn_objstorage_imgcatalog.config import load_config, resource
 from tkn_objstorage_imgcatalog.errors import AppError
 from tkn_objstorage_imgcatalog.images import import_images
@@ -228,7 +228,7 @@ def test_sources_cannot_share_or_nest_managed_paths(tmp_path, key, other_key, ne
 
 
 def test_legacy_config_preserves_existing_library_and_baseline(cfg, asset, tmp_path):
-    Catalog(cfg).set_baseline(asset, {"etag": "existing"})
+    NoteStore(cfg).set_baseline(asset, {"etag": "existing"})
     path = tmp_path / "legacy.yaml"
     legacy = deepcopy(cfg.source_values)
     legacy["schema_version"] = "1.0.9"
@@ -239,8 +239,8 @@ def test_legacy_config_preserves_existing_library_and_baseline(cfg, asset, tmp_p
     assert migrated.source_id == "images"
     assert migrated.data_root == cfg.data_root
     assert migrated.state_root == cfg.state_root
-    assert Catalog(migrated).assets()[0]["asset_id"] == asset["asset_id"]
-    assert Catalog(migrated).baseline(asset)["etag"] == "existing"
+    assert NoteStore(migrated).assets()[0]["asset_id"] == asset["asset_id"]
+    assert NoteStore(migrated).baseline(asset)["etag"] == "existing"
     assert migrated.loaded_sources[-1]["migrated"] is True
     assert snapshot(tmp_path) == before
 
@@ -336,8 +336,8 @@ def test_cli_import_uses_separate_libraries_conversion_and_delivery(tmp_path, so
     config = load_config(path)
     public = config.select_source("public-images")
     private = config.select_source("private-images")
-    assert len(Catalog(public).assets()) == len(Catalog(private).assets()) == 1
-    public_record, private_record = Catalog(public).assets()[0], Catalog(private).assets()[0]
+    assert len(NoteStore(public).assets()) == len(NoteStore(private).assets()) == 1
+    public_record, private_record = NoteStore(public).assets()[0], NoteStore(private).assets()[0]
     assert public_record["asset_id"] != private_record["asset_id"]
     assert (
         "https://images.example.com/example.webp"
@@ -363,15 +363,15 @@ def test_same_release_name_and_sync_baselines_stay_separate(tmp_path, source, bl
     for selected in (public, private):
         with Operation(selected, "import", False) as operation:
             import_images(selected, [source], operation)
-    first, second = Catalog(public).assets()[0], Catalog(private).assets()[0]
+    first, second = NoteStore(public).assets()[0], NoteStore(private).assets()[0]
     assert first["relative_path"] == second["relative_path"] == "example.webp"
     # The same original and release name retain the same ID in separate catalogs.
     # Baselines must still be isolated by each source's library and Azure target.
     assert first["asset_id"] == second["asset_id"]
     with Operation(public, "push", False) as operation:
         push(public, [], operation, blobs, yes=True)
-    assert Catalog(public).baseline(first) is not None
-    assert Catalog(private).baseline(second) is None
+    assert NoteStore(public).baseline(first) is not None
+    assert NoteStore(private).baseline(second) is None
     assert not (private.state_root / "sync").exists()
 
 

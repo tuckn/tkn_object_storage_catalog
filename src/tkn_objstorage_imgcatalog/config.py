@@ -289,9 +289,11 @@ def resolve_source(settings: dict[str, Any], source_id: str, cwd: Path) -> None:
     data, state, notes = (Path(settings[k]) for k in ("data_root", "state_root", "notes_root"))
     if overlaps(data, state):
         raise AppError(f"sources.{source_id}: data_root and state_root must be separate trees.")
-    for reserved in ("staging", "originals", "releases", "catalog", "provenance", "history"):
+    for reserved in ("staging", "originals", "releases", "catalog", "provenance"):
         if overlaps(notes, data / reserved):
-            raise AppError(f"sources.{source_id}: notes_root overlaps managed image/catalog trees.")
+            raise AppError(
+                f"sources.{source_id}: notes_root overlaps managed image or legacy migration trees."
+            )
     if overlaps(notes, state):
         raise AppError(f"sources.{source_id}: notes_root must not overlap state_root.")
 

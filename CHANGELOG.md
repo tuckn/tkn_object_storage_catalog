@@ -1,5 +1,13 @@
 # 変更履歴
 
+## 0.6.0 — 2026-10-06
+
+- 画像の管理情報をノートの Frontmatter（schemaVersion 3.0.0）に統合し、catalog JSON の通常の読み書きを廃止しました。ID・原本との対応・生成日時・変換条件の指紋をノートに保持します。
+- 実行・復旧記録を state/runs に一本化し、data/provenance への重複保存を廃止しました。recover も state/runs を読み取ります。
+- build / pull による公開用画像の旧版保存（history）を廃止しました。
+- migrate / migrate --dry-run を追加しました。旧データの検証、移行前の控え、書き込みエラー時の巻き戻しを備え、既存ID・説明・独自項目・本文・画像・同期基準を保持します。旧JSONは移行完了後に取り除き、既存の history / legacy ファイルは自動削除しません。
+- README のシーケンス図・保存構造・移行手順と、ノート・移行・復旧の検証を更新しました。
+
 ## 0.5.0 — 2026-10-06
 
 - 設定スキーマ3.2.0で `integration_tests` のAWS S3登録に対応しました。専用profile、region、期待account/role、標準endpointを照合用ハッシュに含めます。Azure/R2の既存形式と通常のsourcesは維持します。

@@ -12,7 +12,7 @@ from botocore.response import StreamingBody
 from botocore.stub import ANY, Stubber
 
 import tkn_objstorage_imgcatalog.s3 as module
-from tkn_objstorage_imgcatalog.catalog import Catalog, Operation
+from tkn_objstorage_imgcatalog.assets import NoteStore, Operation
 from tkn_objstorage_imgcatalog.errors import AppError, ConflictError
 from tkn_objstorage_imgcatalog.s3 import S3Objects
 from tkn_objstorage_imgcatalog.sync import push
@@ -158,7 +158,7 @@ def test_unexpected_download_revision_is_rejected(adapter):
 
 @pytest.mark.parametrize("existing", [False, True])
 def test_conditional_upload_preserves_metadata_and_verifies_bytes(adapter, cfg, asset, existing):
-    path = Catalog(cfg).release(asset)
+    path = NoteStore(cfg).release(asset)
     payload = path.read_bytes()
     previous = (
         {"etag": '"old"', "metadata": {"custom": "keep"}, "cache_control": "private"}
@@ -210,7 +210,7 @@ def test_upload_rejects_mismatched_content(adapter, cfg, asset):
         stub.add_response("head_object", head('"new"'))
         stub.add_response("get_object", get_response(b"changed", '"new"'))
         with pytest.raises(ConflictError, match="bytes differ"):
-            adapter.upload("example.webp", Catalog(cfg).release(asset), asset, None)
+            adapter.upload("example.webp", NoteStore(cfg).release(asset), asset, None)
 
 
 @pytest.mark.parametrize("status", [409, 412])
@@ -220,7 +220,7 @@ def test_write_conflicts_do_not_retry_unconditionally(adapter, cfg, asset, statu
             "put_object", service_error_code="PreconditionFailed", http_status_code=status
         )
         with pytest.raises(ClientError):
-            adapter.upload("example.webp", Catalog(cfg).release(asset), asset, None)
+            adapter.upload("example.webp", NoteStore(cfg).release(asset), asset, None)
         stub.assert_no_pending_responses()
 
 
@@ -228,7 +228,7 @@ def test_upload_limit_and_unknown_public_access(adapter, cfg, asset, monkeypatch
     monkeypatch.setattr(module, "MAX_UPLOAD_BYTES", 1)
     with Stubber(adapter.client):
         with pytest.raises(AppError, match="single PUT"):
-            adapter.upload("example.webp", Catalog(cfg).release(asset), asset, None)
+            adapter.upload("example.webp", NoteStore(cfg).release(asset), asset, None)
     assert adapter.public_access() is None
     cfg.delivery["url_base"] = "https://images.example.com"
     assert adapter.public_access() is True

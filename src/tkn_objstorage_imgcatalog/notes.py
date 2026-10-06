@@ -12,7 +12,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.error import YAMLError
 
-from .catalog import Catalog, Record
+from .assets import NOTE_SCHEMA_VERSION, NoteStore, Record
 from .config import Config, resource
 from .errors import AppError, ConflictError
 from .io import atomic_bytes, sha256, within
@@ -105,7 +105,10 @@ def render_note(
         )
     if data.get("assetId") not in {None, record["asset_id"]}:
         raise ConflictError("Proxy note belongs to a different asset.")
-    if data.get("schemaVersion") not in {None, "1.0.0", "2.0.0"}:
+    version = data.get("schemaVersion")
+    if version is not None and (
+        not isinstance(version, str) or version not in {"1.0.0", "2.0.0", NOTE_SCHEMA_VERSION}
+    ):
         raise AppError("Unsupported note schemaVersion; refusing to rewrite.")
     for old in ("blobName", "blobUrl"):
         if data.get("schemaVersion") == "1.0.0":
@@ -117,10 +120,15 @@ def render_note(
     for key in ("tags", "nouns", "domains", "projects"):
         data.setdefault(key, [])
     source = record.get("source")
-    image = Catalog(config).release(record)
+    image = NoteStore(config).release(record)
     blob, url = urls(config, record["relative_path"])
     managed: dict[str, Any] = {
-        "schemaVersion": "2.0.0",
+        "schemaVersion": NOTE_SCHEMA_VERSION,
+        "created": record["created_at"],
+        "conversionRecipe": record["release"].get("recipe"),
+        "releaseGeneratedAt": record["release"].get("generated_at", record["updated_at"]),
+        "sourceCapturedAt": source.get("captured_at", record["created_at"]) if source else None,
+        "acquiredFrom": record["release"].get("acquired_from"),
         "assetId": record["asset_id"],
         "noteId": record["note_id"],
         "localPath": str(image),
@@ -142,6 +150,12 @@ def render_note(
         ),
         "updated": record["updated_at"],
     }
+    for field, key in (
+        ("legacySourceRef", "legacy_source_ref"),
+        ("sourceUnavailableReason", "source_unavailable_reason"),
+    ):
+        if key in record:
+            managed[field] = record[key]
     if sync_status:
         managed["syncStatus"] = sync_status
     elif "syncStatus" not in data:
@@ -205,13 +219,11 @@ def refresh_note(
 
 
 def refresh_notes(config: Config, selectors: list[str], *, dry_run: bool = False) -> list[Record]:
-    catalog = Catalog(config)
+    store = NoteStore(config)
     result = []
-    for record in catalog.select(selectors):
-        catalog.check_release(record)
+    for record in store.select(selectors):
+        store.check_release(record)
         status = refresh_note(config, record, dry_run=dry_run)
-        if not dry_run:
-            catalog.save(record)
         result.append({"asset_id": record["asset_id"], "status": status})
     base = config.notes_root / "images.base"
     if not base.exists() and not dry_run:

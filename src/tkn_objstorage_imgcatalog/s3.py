@@ -13,7 +13,7 @@ import boto3
 from botocore.config import Config as SDKConfig
 from botocore.exceptions import ClientError
 
-from .catalog import Record
+from .assets import Record
 from .config import Config
 from .errors import AppError, ConflictError
 from .io import IMAGE_EXTENSIONS, safe_relative

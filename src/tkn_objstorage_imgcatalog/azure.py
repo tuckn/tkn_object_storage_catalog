@@ -10,7 +10,7 @@ from azure.core.exceptions import HttpResponseError, ResourceNotFoundError
 from azure.identity import AzureCliCredential, ManagedIdentityCredential
 from azure.storage.blob import BlobServiceClient, ContentSettings
 
-from .catalog import Record
+from .assets import Record
 from .config import Config
 from .errors import AppError, ConflictError
 from .io import IMAGE_EXTENSIONS, safe_relative

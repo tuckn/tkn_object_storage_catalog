@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from tkn_objstorage_imgcatalog.catalog import Catalog, Operation
+from tkn_objstorage_imgcatalog.assets import NoteStore, Operation
 from tkn_objstorage_imgcatalog.errors import AppError, ConflictError
 from tkn_objstorage_imgcatalog.images import build_images
 from tkn_objstorage_imgcatalog.sync import pull, push, status, verify
@@ -31,8 +31,8 @@ def test_remote_update_blocks_push_then_pull_preserves_bytes(cfg, asset, blobs):
     with pytest.raises(ConflictError):
         run_push(cfg, blobs)
     run_pull(cfg, blobs)
-    updated = Catalog(cfg).assets()[0]
-    assert Catalog(cfg).release(updated).read_bytes() == b"replacement exact blob content"
+    updated = NoteStore(cfg).assets()[0]
+    assert NoteStore(cfg).release(updated).read_bytes() == b"replacement exact blob content"
     assert updated["source"] is None
     assert (cfg.data_root / asset["source"]["path"]).exists()
 
@@ -63,9 +63,9 @@ def test_public_upload_requires_confirmation(cfg, asset, blobs):
 def test_remote_only_download_and_original_unknown(cfg, blobs):
     blobs.put("nested/file.webp", b"exact image bytes")
     assert run_pull(cfg, blobs)[0]["status"] == "created"
-    record = Catalog(cfg).assets()[0]
+    record = NoteStore(cfg).assets()[0]
     assert record["source"] is None
-    assert Catalog(cfg).release(record).read_bytes() == b"exact image bytes"
+    assert NoteStore(cfg).release(record).read_bytes() == b"exact image bytes"
     assert run_pull(cfg, blobs)[0]["status"] == "unchanged"
 
 
@@ -93,7 +93,7 @@ def test_conditional_write_race(cfg, asset, blobs):
     blobs.race = True
     with pytest.raises(ConflictError):
         run_push(cfg, blobs)
-    assert Catalog(cfg).baseline(asset) is None
+    assert NoteStore(cfg).baseline(asset) is None
 
 
 def test_remote_deleted_is_not_silently_recreated(cfg, asset, blobs):
@@ -104,18 +104,18 @@ def test_remote_deleted_is_not_silently_recreated(cfg, asset, blobs):
 
 
 def test_untracked_remote_same_bytes_adopted_without_upload(cfg, asset, blobs):
-    blobs.put(asset["relative_path"], Catalog(cfg).release(asset).read_bytes())
+    blobs.put(asset["relative_path"], NoteStore(cfg).release(asset).read_bytes())
     assert run_push(cfg, blobs)[0]["status"] == "unchanged"
     assert blobs.writes == 0
-    assert Catalog(cfg).baseline(asset)
+    assert NoteStore(cfg).baseline(asset)
 
 
 def test_manual_local_edit_not_overwritten(cfg, asset, blobs):
     run_push(cfg, blobs)
-    Catalog(cfg).release(asset).write_bytes(b"user edit")
+    NoteStore(cfg).release(asset).write_bytes(b"user edit")
     with pytest.raises(ConflictError):
         run_pull(cfg, blobs)
-    assert Catalog(cfg).release(asset).read_bytes() == b"user edit"
+    assert NoteStore(cfg).release(asset).read_bytes() == b"user edit"
 
 
 def test_malicious_remote_path_rejected(cfg, blobs, tmp_path):
@@ -128,3 +128,18 @@ def test_malicious_remote_path_rejected(cfg, blobs, tmp_path):
 def test_status_reports_remote_only(cfg, blobs):
     blobs.put("only.webp", b"remote only")
     assert status(cfg, blobs=blobs)[0]["remote"] == "remote_only"
+
+
+def test_pull_replaces_without_creating_image_archive(cfg, asset, blobs):
+    with Operation(cfg, "push", False) as operation:
+        push(cfg, [], operation, blobs)
+    blobs.put(asset["relative_path"], b"updated remote bytes")
+    with Operation(cfg, "pull", False) as operation:
+        pull(cfg, [], operation, blobs)
+    updated = NoteStore(cfg).assets()[0]
+    assert updated["source"] is None
+    assert NoteStore(cfg).release(updated).read_bytes() == b"updated remote bytes"
+    assert not (cfg.data_root / "history").exists()
+    assert not (cfg.data_root / "catalog").exists()
+    assert not (cfg.data_root / "provenance").exists()
+    assert verify(cfg, blobs=blobs)[0]["status"] == "valid"

@@ -9,7 +9,7 @@ from typing import Any
 from PIL import Image, ImageOps, features
 from PIL import __version__ as pillow_version
 
-from .catalog import Catalog, Operation, Record, make_record
+from .assets import NoteStore, Operation, Record, make_record
 from .config import Config
 from .errors import AppError, ConflictError
 from .io import atomic_bytes, copy_verified, fingerprint, image_files, now, sha256, within
@@ -79,7 +79,7 @@ def render_image(source: Path, config: Config, convert: bool) -> bytes:
 def import_images(
     config: Config, inputs: list[Path], operation: Operation, *, name: str | None = None
 ) -> list[Record]:
-    catalog = Catalog(config)
+    store = NoteStore(config)
     inputs = inputs or [config.data_root / "staging"]
     candidates: list[tuple[Path, str]] = []
     for supplied in inputs:
@@ -93,7 +93,7 @@ def import_images(
             candidates.append((source, relative))
     if name and len(candidates) != 1:
         raise AppError("--name requires exactly one image.")
-    existing = {r["relative_path"].casefold(): r for r in catalog.assets()}
+    existing = {r["relative_path"].casefold(): r for r in store.assets()}
     planned: list[tuple[Path, str, str, bool, Record | None]] = []
     seen: set[str] = set()
     for source, relative in candidates:
@@ -116,7 +116,7 @@ def import_images(
         digest = sha256(source)
         old = existing.get(relative.casefold())
         if old:
-            catalog.check_release(old)
+            store.check_release(old)
             previous = old.get("source")
             if not previous or previous["sha256"] != digest:
                 raise ConflictError(f"An asset already uses {relative}; choose another --name.")
@@ -135,8 +135,7 @@ def import_images(
     for source, relative, digest, convert, old in planned:
         if old:
             if not operation.dry_run:
-                refresh_note(config, old)
-                catalog.save(old)
+                store.save(old)
             result.append({"asset_id": old["asset_id"], "status": "unchanged", "path": relative})
             continue
         status = {
@@ -175,10 +174,8 @@ def import_images(
             recipe=recipe(config),
         )
         operation.event("release_prepared", record=record)
-        atomic_bytes(catalog.release(record), content, create_only=True)
-        catalog.save(record)
-        refresh_note(config, record)
-        catalog.save(record)
+        atomic_bytes(store.release(record), content, create_only=True)
+        store.save(record)
         operation.event(
             "imported",
             asset_id=record["asset_id"],
@@ -190,10 +187,10 @@ def import_images(
 
 
 def build_images(config: Config, selectors: list[str], operation: Operation) -> list[Record]:
-    catalog = Catalog(config)
+    store = NoteStore(config)
     result = []
-    for record in catalog.select(selectors):
-        catalog.check_release(record)
+    for record in store.select(selectors):
+        store.check_release(record)
         refresh_note(config, record, dry_run=True)
         source = record.get("source")
         if not source:
@@ -229,11 +226,8 @@ def build_images(config: Config, selectors: list[str], operation: Operation) -> 
             updated["release"]["entity_id"] = "urn:sha256:" + updated["release"]["sha256"]
             updated["updated_at"] = now()
             operation.event("release_prepared", record=updated)
-            catalog.archive_release(record)
-            atomic_bytes(catalog.release(record), content, expected=record["release"]["sha256"])
-            catalog.save(updated)
-            refresh_note(config, updated, sync_status="local")
-            catalog.save(updated)
+            atomic_bytes(store.release(record), content, expected=record["release"]["sha256"])
+            store.save(updated, sync_status="local")
             operation.event(
                 "built",
                 asset_id=record["asset_id"],

@@ -205,7 +205,7 @@ def test_normal_config_is_never_read_and_roots_are_isolated(tmp_path):
 def test_generated_image_import_uses_short_isolated_workspace(tmp_path):
     from PIL import Image
 
-    from tkn_objstorage_imgcatalog.catalog import Catalog
+    from tkn_objstorage_imgcatalog.assets import NoteStore
 
     value = target("azure")
     run = LiveRun(value, target_digest(value), tmp_path)
@@ -214,7 +214,7 @@ def test_generated_image_import_uses_short_isolated_workspace(tmp_path):
         source = run.work_root / "generated.png"
         Image.new("RGB", (24, 16), "red").save(source)
         run.command(path, "import", source, "--name", "nested/生成 画像.png")
-        assert Catalog(config).assets()[0]["relative_path"] == "nested/生成 画像.webp"
+        assert NoteStore(config).assets()[0]["relative_path"] == "nested/生成 画像.webp"
 
 
 def write_test_config(path, **targets):

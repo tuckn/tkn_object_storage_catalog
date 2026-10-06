@@ -11,7 +11,7 @@ from botocore.exceptions import ClientError, NoCredentialsError
 from ruamel.yaml import YAML
 
 from tkn_objstorage_imgcatalog import cli
-from tkn_objstorage_imgcatalog.catalog import Catalog, Operation, make_record
+from tkn_objstorage_imgcatalog.assets import NoteStore, Operation, make_record
 from tkn_objstorage_imgcatalog.config import load_config
 from tkn_objstorage_imgcatalog.errors import AppError
 from tkn_objstorage_imgcatalog.io import fingerprint
@@ -64,7 +64,7 @@ def test_mixed_providers_have_isolated_targets_and_roots(tmp_path):
         selected = config.select_source(provider)
         assert selected.provider == provider
         assert selected.data_root == tmp_path / "home/.tkn/objstorage-imgcatalog/data" / provider
-        keys.append(Catalog(selected).target_key())
+        keys.append(NoteStore(selected).target_key())
     assert len(set(keys)) == 3
     assert not (tmp_path / "home").exists()
 
@@ -134,12 +134,12 @@ def test_old_azure_baseline_fingerprint_and_asset_ids_are_stable(cfg, asset):
             **{key: cfg.azure[key] for key in ("account_url", "container", "prefix")},
         }
     )
-    assert Catalog(cfg).target_key() == expected
-    Catalog(cfg).set_baseline(asset, {"etag": "old"})
+    assert NoteStore(cfg).target_key() == expected
+    NoteStore(cfg).set_baseline(asset, {"etag": "old"})
     changed = deepcopy(cfg)
     changed.source_values["provider"] = "s3"
     changed.s3.update(bucket="images", region="ap-northeast-1")
-    assert Catalog(changed).baseline(asset) is None
+    assert NoteStore(changed).baseline(asset) is None
     record = make_record("a.png", "stable", source=None, digest="a" * 64, size=1)
     assert record["asset_id"] == str(uuid5(NAMESPACE_URL, "azure-blob-note:stable"))
 
@@ -175,18 +175,23 @@ def test_r2_jurisdiction_endpoints(tmp_path, jurisdiction):
 
 def test_note_migration_preserves_human_content_and_ids(cfg, asset):
     path = find_note(cfg, asset)
-    text = path.read_text(encoding="utf-8").replace("schemaVersion: 2.0.0", "schemaVersion: 1.0.0")
+    text = path.read_text(encoding="utf-8").replace("schemaVersion: 3.0.0", "schemaVersion: 1.0.0")
     text = text.replace("objectKey:", "blobName:").replace("objectUrl:", "blobUrl:")
     text = text.replace("object-storage-catalog:", "azure-blob-note:")
     text = text.replace("description: ''", "description: My description # keep")
     text += "\n## VLM description\nHuman-reviewed text.\n"
     path.write_text(text, encoding="utf-8")
-    refresh_notes(cfg, [])
+    from tkn_objstorage_imgcatalog.io import atomic_json
+    from tkn_objstorage_imgcatalog.migration import migrate
+
+    atomic_json(cfg.data_root / "catalog" / (asset["asset_id"] + ".json"), asset)
+    with Operation(cfg, "migrate", False) as operation:
+        migrate(cfg, operation)
     result = path.read_text(encoding="utf-8")
     data, _ = split_note(result)
     assert data["assetId"] == asset["asset_id"]
     assert data["noteId"] == asset["note_id"]
-    assert data["schemaVersion"] == "2.0.0"
+    assert data["schemaVersion"] == "3.0.0"
     assert "blobName" not in data and "blobUrl" not in data
     assert data["objectKey"] == asset["relative_path"]
     assert "# keep" in result and "Human-reviewed text." in result
@@ -231,7 +236,7 @@ def test_provider_sync_and_readonly_previews(tmp_path, provider, asset, cfg, blo
     blobs.put(asset["relative_path"], b"updated bytes")
     with Operation(selected, "pull", False) as operation:
         pull(selected, [], operation, blobs)
-    assert Catalog(selected).release(asset).read_bytes() == b"updated bytes"
+    assert NoteStore(selected).release(asset).read_bytes() == b"updated bytes"
 
 
 def test_r2_api_url_is_not_used_as_public_delivery_url(tmp_path):

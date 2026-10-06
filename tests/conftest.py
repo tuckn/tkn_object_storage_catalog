@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from tkn_objstorage_imgcatalog.catalog import Catalog, Operation
+from tkn_objstorage_imgcatalog.assets import NoteStore, Operation
 from tkn_objstorage_imgcatalog.config import load_config
 from tkn_objstorage_imgcatalog.errors import ConflictError
 from tkn_objstorage_imgcatalog.images import import_images
@@ -41,7 +41,7 @@ def source(tmp_path):
 def asset(cfg, source):
     with Operation(cfg, "import", False) as operation:
         import_images(cfg, [source], operation)
-    return Catalog(cfg).assets()[0]
+    return NoteStore(cfg).assets()[0]
 
 
 class FakeBlobs:

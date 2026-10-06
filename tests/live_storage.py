@@ -33,7 +33,7 @@ from PIL import Image  # noqa: E402
 
 from tkn_objstorage_imgcatalog import cli  # noqa: E402
 from tkn_objstorage_imgcatalog import config as configuration  # noqa: E402
-from tkn_objstorage_imgcatalog.catalog import Catalog, make_record  # noqa: E402
+from tkn_objstorage_imgcatalog.assets import NoteStore, make_record  # noqa: E402
 from tkn_objstorage_imgcatalog.errors import AppError  # noqa: E402
 from tkn_objstorage_imgcatalog.io import sha256  # noqa: E402
 from tkn_objstorage_imgcatalog.notes import find_note, serialize, split_note  # noqa: E402
@@ -371,7 +371,7 @@ class LiveRun:
             "CLI import and WebP conversion",
             lambda: self.command(path, "import", source, "--name", "nested/生成 画像.png"),
         )
-        record = Catalog(config).assets()[0]
+        record = NoteStore(config).assets()[0]
         relative = record["relative_path"]
         require(relative == "nested/生成 画像.webp")
         before = snapshot(config)
@@ -491,7 +491,7 @@ class LiveRun:
             "CLI pulls remote update",
             lambda: require(
                 self.command(path, "pull")["result"][0]["status"] == "updated"
-                and sha256(Catalog(config).release(record)) == changed["release"]["sha256"]
+                and sha256(NoteStore(config).release(record)) == changed["release"]["sha256"]
             ),
         )
 
