@@ -49,9 +49,14 @@ class AzureBlobs:
     @staticmethod
     def properties(relative: str, item: Any) -> Record:
         settings = item.content_settings
+        # LIST's XML ETag can be unquoted while HEAD's HTTP ETag is quoted.
+        # Use the HTTP representation for comparisons and conditional requests.
+        etag = item.etag
+        if not etag.startswith('"'):
+            etag = f'"{etag}"'
         return {
             "relative_path": relative,
-            "etag": item.etag,
+            "etag": etag,
             "bytes": item.size,
             "metadata": dict(item.metadata or {}),
             "version_id": item.version_id,

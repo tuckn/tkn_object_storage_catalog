@@ -110,7 +110,7 @@ def test_installed_entrypoint_outside_repository(tmp_path):
         text=True,
     )
     assert completed.returncode == 0
-    assert "tkn-object-storage-catalog 0.3.0" in completed.stdout
+    assert "tkn-object-storage-catalog 0.3.1" in completed.stdout
 
 
 def test_cli_import_json_and_quiet(cfg, source, capsys):

@@ -139,7 +139,7 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 tkn-object-storage-catalog --version
 ```
 
-`tkn-object-storage-catalog 0.3.0` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-object-storage-catalog 0.3.1` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
 コマンドとオプションの一覧は `tkn-object-storage-catalog --help` で確認できます。
@@ -667,8 +667,8 @@ uv build
 ```
 
 > [!NOTE]
-> テストは、一時フォルダーのデータ、ストレージを模した処理、AWS SDK の応答スタブを使います。
-> 実際のストレージ アカウントには書き込まないため、Azure/S3/R2 との実接続の動作はテストでは保証されません。
+> 通常の `pytest` は、一時フォルダーのデータ、ストレージを模した処理、AWS SDK の応答スタブを使い、クラウドへ接続しません。
+> Azure / R2 の専用テスト環境を使う場合は、[実環境統合テスト](docs/testing/live-storage.md)を明示的に実行します。生成画像の転送・競合拒否・非公開アクセスを確認し、R2は今回の生成物だけを削除、Azureは保持設定に任せます。
 
 - パッケージは `src` レイアウトで、ノートと設定のひな形を wheel と sdist に含めます。インストール後の実行は、このリポジトリのフォルダーに依存しません。
 - ソースの変更をすぐに反映したい場合は、`uv tool install -e . --reinstall` で editable インストールにします。

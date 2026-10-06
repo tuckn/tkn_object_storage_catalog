@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
@@ -15,7 +16,31 @@ from tkn_object_storage_catalog.errors import AppError, ConflictError
 from tkn_object_storage_catalog.images import import_images
 from tkn_object_storage_catalog.io import atomic_bytes
 from tkn_object_storage_catalog.notes import find_note
-from tkn_object_storage_catalog.sync import push
+from tkn_object_storage_catalog.sync import push, status
+
+
+@pytest.mark.parametrize("listed_etag", ["0x8ABC", '"0x8ABC"'])
+def test_azure_list_and_head_etags_report_unchanged(cfg, asset, listed_etag):
+    def properties(etag):
+        return AzureBlobs.properties(
+            asset["relative_path"],
+            SimpleNamespace(
+                etag=etag,
+                size=asset["release"]["bytes"],
+                metadata={},
+                version_id=None,
+                content_settings=SimpleNamespace(cache_control=None),
+            ),
+        )
+
+    head = properties('"0x8ABC"')
+    listed = properties(listed_etag)
+    assert listed["etag"] == head["etag"] == '"0x8ABC"'
+    assert properties("0x8ABD")["etag"] != head["etag"]
+    Catalog(cfg).set_baseline(asset, head)
+    store = Mock()
+    store.list.return_value = [listed]
+    assert status(cfg, blobs=store)[0]["remote"] == "unchanged"
 
 
 def test_readonly_note_collision_preflight(cfg, source):
