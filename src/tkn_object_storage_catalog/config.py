@@ -15,7 +15,7 @@ from .errors import AppError, ConflictError
 from .io import atomic_bytes, check_schema, now, safe_relative, sha256
 
 APPLICATION_ID = "object_storage_catalog"
-CONFIG_SCHEMA_VERSION = "3.0.0"
+CONFIG_SCHEMA_VERSION = "3.1.0"
 DEFAULT_SOURCE_ID = "my-obj-storage-1"
 LEGACY_SOURCE_ID = "images"
 
@@ -159,6 +159,39 @@ def validate_source_id(source_id: Any, label: str) -> None:
     safe_relative(source_id)
 
 
+def validate_integration_tests(value: Any, label: str) -> None:
+    """Validate non-secret test contracts without registering ordinary sources."""
+    if not isinstance(value, dict):
+        raise AppError(f"{label}: integration_tests must be a mapping.")
+    fields = {"provider", "endpoint_url", "bucket", "cleanup", "expected_target_sha256"}
+    for name, target in value.items():
+        validate_source_id(name, label)
+        if not isinstance(target, dict) or set(target) != fields:
+            raise AppError(f"{label}.{name}: expected only {', '.join(sorted(fields))}.")
+        if any(not isinstance(item, str) for item in target.values()):
+            raise AppError(f"{label}.{name}: all test settings must be strings.")
+        provider = target["provider"]
+        if provider not in {"azure", "r2"}:
+            raise AppError(f"{label}.{name}: provider must be azure or r2.")
+        if target["cleanup"] != ("retain" if provider == "azure" else "manifest"):
+            raise AppError(f"{label}.{name}: Azure must retain; R2 must use manifest cleanup.")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,61}[a-z0-9]", target["bucket"]) or not (
+            {"test", "tests"} & set(target["bucket"].split("-"))
+        ):
+            raise AppError(f"{label}.{name}: bucket/container must be a dedicated test name.")
+        endpoint_pattern = (
+            r"https://[a-z0-9]{3,24}\.blob\.core\.windows\.net"
+            if provider == "azure"
+            else r"https://[0-9a-f]{32}\.r2\.cloudflarestorage\.com"
+        )
+        if not re.fullmatch(endpoint_pattern, target["endpoint_url"]):
+            raise AppError(
+                f"{label}.{name}: expected a service endpoint without credentials or paths."
+            )
+        if not re.fullmatch(r"[0-9a-f]{64}", target["expected_target_sha256"]):
+            raise AppError(f"{label}.{name}: expected_target_sha256 must be a reviewed SHA-256.")
+
+
 def normalize_layer(
     value: dict[str, Any], defaults: dict[str, Any], label: str
 ) -> tuple[dict[str, Any], bool]:
@@ -178,15 +211,24 @@ def normalize_layer(
         # Preserve existing storage locations; loading never moves data or rewrites YAML.
         legacy = {key: item for key, item in value.items() if key != "schema_version"}
         return {"sources": {LEGACY_SOURCE_ID: legacy}}, True
-    if (major, minor) not in {(2, 0), (3, 0)}:
+    if (major, minor) not in {(2, 0), (3, 0), (3, 1)}:
         raise AppError(
-            f"{label}: unsupported config schema {version}; supported schema is 3.0.x (also reads 1.0.x/2.0.x)."
+            f"{label}: unsupported config schema {version}; supported schema is 3.1.x (also reads 1.0.x/2.0.x/3.0.x)."
         )
+    layer: dict[str, Any] = {}
+    allowed = {"schema_version", "sources"}
+    if (major, minor) == (3, 1):
+        allowed.add("integration_tests")
+    if "integration_tests" in value and "integration_tests" not in allowed:
+        raise AppError(f"{label}: integration_tests requires config schema 3.1.0.")
     for key in value:
-        if key not in {"schema_version", "sources"}:
+        if key not in allowed:
             raise AppError(f"{label}: move {key} into sources.<source-id>.{key}.")
+    if "integration_tests" in value:
+        validate_integration_tests(value["integration_tests"], f"{label}.integration_tests")
+        layer["integration_tests"] = deepcopy(value["integration_tests"])
     if "sources" not in value:
-        return {}, False
+        return layer, False
     sources = value["sources"]
     if not isinstance(sources, dict):
         raise AppError(f"{label}: sources must be a mapping.")
@@ -200,7 +242,8 @@ def normalize_layer(
             for key, folder in (("data_root", "data"), ("state_root", "state")):
                 if settings.get(key) is None:
                     settings[key] = str(legacy_root() / folder / source_id)
-    return {"sources": deepcopy(sources)}, False
+    layer["sources"] = sources
+    return layer, False
 
 
 def resolve_source(settings: dict[str, Any], source_id: str, cwd: Path) -> None:
@@ -376,6 +419,18 @@ def load_config(
             continue
         raw = parse_yaml(path.read_text(encoding="utf-8-sig"), str(path))
         layer, migrated = normalize_layer(raw, defaults, str(path))
+        if "integration_tests" in layer:
+            # Replace the whole mapping: never combine endpoint/hash across layers.
+            values["integration_tests"] = layer["integration_tests"]
+            origins = {
+                key: item
+                for key, item in origins.items()
+                if key != "integration_tests" and not key.startswith("integration_tests.")
+            }
+            origins.update(
+                {key: str(path) for key in flatten(layer["integration_tests"], "integration_tests")}
+                or {"integration_tests": str(path)}
+            )
         if "sources" in layer:
             if migrated:
                 if not legacy_active:

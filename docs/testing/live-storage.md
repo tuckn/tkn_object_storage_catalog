@@ -16,67 +16,73 @@
 - 重複作成・古いETagによるPUT/GETの拒否、拒否後のオブジェクト不変。
 - R2での公開状態不明の確認フローと、今回のmanifestだけを対象にした後片付け。
 
-CLIはこのcheckoutの `cli.main` をプロセス内で呼び、parser・設定読み込み・同期・画像変換・実SDKを通します。ユーザー設定と旧設定の探索先だけを空の試験用フォルダへ差し替えます。インストール済みconsole-script launcherの実接続試験ではありません。
+CLIはこのcheckoutの `cli.main` をプロセス内で呼び、parser・設定読み込み・同期・画像変換・実SDKを通します。接続先をユーザー設定から読み込んだ後、試験対象CLIの設定探索先は空の試験用フォルダへ差し替え、実行専用の設定を渡します。通常の source 設定は試験に使いません。インストール済みconsole-script launcherの実接続試験ではありません。
 
 ## 接続先の登録
 
 `uv sync --locked` で開発環境を準備します。リポジトリ移動後は、現在の `.venv/Scripts/python.exe` とR2起動補助のパスを確認してください。テストプログラムは現在のcheckoutの `src` を優先して読みます。
 
-承認済みの引き継ぎ資料から、非秘密の接続情報だけを `.local/integration-targets/azure.json` と `r2.json` へ保存します。`.local/` はGit対象外です。以下は例であり、接続先としてそのまま使わないでください。
+普段の `~/.tkn/object_storage_catalog/config.yaml` に、非秘密の接続先を `integration_tests` として追加します。通常の `sources` はそのまま残します。先に `uv tool install . --reinstall` でインストール済みCLIを0.4.0以降へ更新し、設定の `schema_version` を `"3.1.0"` にしてください。
 
-Azure:
+以下は追加する部分の例です。既存の設定全体を置き換えず、承認済みの引き継ぎ資料の値へ書き換えてください。ハッシュ欄も、後述のレビュー時に算出した64桁の値が必要です。
 
-```json
-{
-  "provider": "azure",
-  "endpoint_url": "https://examplestorage.blob.core.windows.net",
-  "bucket": "example-tests",
-  "cleanup": "retain"
-}
+```yaml
+schema_version: "3.1.0"
+# 既存の sources は保持する
+integration_tests:
+  azure:
+    provider: azure
+    endpoint_url: https://examplestorage.blob.core.windows.net
+    bucket: example-tests
+    cleanup: retain
+    expected_target_sha256: "<reviewed-azure-target-sha256>"
+  r2:
+    provider: r2
+    endpoint_url: https://00000000000000000000000000000000.r2.cloudflarestorage.com
+    bucket: example-tests
+    cleanup: manifest
+    expected_target_sha256: "<reviewed-r2-target-sha256>"
 ```
 
 Azureでは `bucket` がコンテナ名を表します。`cleanup` は必ず `retain` で、削除APIは呼びません。本人が事前にAzure CLIへログインした状態で実行します。Managed Identityはこのランナーでは試験しません。
 
-R2:
+R2は対象バケット限定キーを登録済みの基盤側DPAPI起動補助を使います。実行用の設定では `s3.profile: null` を固定し、子プロセスのAWS環境変数を利用します。`.env`、YAML、共有credentials、コマンド引数へキーを複製しないでください。
 
-```json
-{
-  "provider": "r2",
-  "endpoint_url": "https://00000000000000000000000000000000.r2.cloudflarestorage.com",
-  "bucket": "example-tests",
-  "cleanup": "manifest"
-}
-```
-
-R2は対象バケット限定キーを登録済みの基盤側DPAPI起動補助を使います。テスト設定では `s3.profile: null` を固定し、子プロセスのAWS環境変数を利用します。`.env`、YAML、共有credentials、コマンド引数へキーを複製しないでください。
-
-接続先は、引き継ぎ資料とendpoint・コンテナ／バケット・削除方針を照合してから、以下で正規化SHA-256を計算し、レビュー済みの値として別途記録します。
+接続先は、引き継ぎ資料とendpoint・コンテナ／バケット・削除方針を照合してから、以下で正規化SHA-256を計算します。表示された値をそれぞれの `expected_target_sha256` へ記録します。照合用ハッシュは秘密値ではありません。
 
 ```powershell
 @'
-import json
 import sys
 from pathlib import Path
 sys.path.insert(0, "tests")
-from live_storage import target_digest
-for provider in ("azure", "r2"):
-    target = json.loads(Path(f".local/integration-targets/{provider}.json").read_text(encoding="utf-8-sig"))
-    print(provider, target_digest(target))
+from live_storage import configuration, target_digest
+path = Path.home() / ".tkn/object_storage_catalog/config.yaml"
+config = configuration.parse_yaml(path.read_text(encoding="utf-8-sig"), "test config")
+for name, settings in config["integration_tests"].items():
+    target = {key: value for key, value in settings.items() if key != "expected_target_sha256"}
+    print(name, target_digest(target))
 '@ | & .venv/Scripts/python.exe -
 ```
 
-実行時はこの固定値を `--expected-target-sha256` に渡します。接続先を書き換えてその場で毎回ハッシュを計算し直すと、誤接続防止の照合になりません。接続先を変える場合は再レビューします。ハッシュは暗号的な権限制限の代わりではありません。
+接続先を書き換えてその場で毎回ハッシュを計算し直すと、誤接続防止の照合になりません。接続先を変える場合は再レビューします。ハッシュは暗号的な権限制限の代わりではありません。
 
 ランナーは未知の設定項目、秘密値入りURL、サービス以外のendpoint、`test` または `tests` の区切り語がない対象名、Azureの削除指定を拒否します。対象名の条件だけでテスト環境を保証するものではないため、引き継ぎ資料との照合が必要です。
 
-## 実行
+## 設定の検査と実行
 
-AzureはPowerShellから以下を実行します。毎回新しいUTC日時＋UUIDのrun IDが生成され、再利用できません。
+まず、クラウドへの接続・認証・画像生成・ファイル書き込みをせずに、設定とハッシュの一致を検査できます。
 
 ```powershell
-& .venv/Scripts/python.exe tests/live_storage.py --run `
-  --target .local/integration-targets/azure.json `
-  --expected-target-sha256 '<reviewed-azure-target-sha256>'
+& .venv/Scripts/python.exe tests/live_storage.py --check --test-target azure
+& .venv/Scripts/python.exe tests/live_storage.py --check --test-target r2
+```
+
+既定ではユーザー設定だけを読みます。別ファイルは `--config 'C:/path/to/config.yaml'` で指定します。通常CLIと異なり、プロジェクト設定・旧ユーザー設定・他の設定ファイルとの合成は行いません。指定した登録名がなければエラーになります。
+
+Azureを実行する場合は、PowerShellから以下を実行します。毎回新しいUTC日時＋UUIDのrun IDが生成され、再利用できません。
+
+```powershell
+& .venv/Scripts/python.exe tests/live_storage.py --run --test-target azure
 ```
 
 R2はPowerShell 7で、移動後の実際のパスを指定します。
@@ -87,13 +93,13 @@ $catalogRoot = (Get-Location).Path
 & "$platformRoot/scripts/Invoke-R2TestProcess.ps1" `
   -Executable "$catalogRoot/.venv/Scripts/python.exe" `
   -Arguments @(
-    "$catalogRoot/tests/live_storage.py", '--run',
-    '--target', "$catalogRoot/.local/integration-targets/r2.json",
-    '--expected-target-sha256', '<reviewed-r2-target-sha256>'
+    "$catalogRoot/tests/live_storage.py", '--run', '--test-target', 'r2'
   )
 ```
 
 DPAPI登録済みの本人と同じWindowsユーザーで実行します。起動補助が失敗した場合は、パス・ユーザー・登録状況を確認し、キーを表示して診断しないでください。SDKのデバッグログや環境変数一覧も出力しません。
+
+0.3.1で使っていた `.local/integration-targets/*.json` は読み込まなくなりました。必要な値を `integration_tests` へ移した後も、旧ファイルは自動削除しません。旧引数 `--target` / `--expected-target-sha256` は使えません。
 
 ## 保存先と後片付け
 

@@ -32,6 +32,7 @@ from PIL import Image  # noqa: E402
 from tkn_object_storage_catalog import cli  # noqa: E402
 from tkn_object_storage_catalog import config as configuration  # noqa: E402
 from tkn_object_storage_catalog.catalog import Catalog, make_record  # noqa: E402
+from tkn_object_storage_catalog.errors import AppError  # noqa: E402
 from tkn_object_storage_catalog.io import sha256  # noqa: E402
 from tkn_object_storage_catalog.notes import find_note, serialize, split_note  # noqa: E402
 from tkn_object_storage_catalog.storage import open_store  # noqa: E402
@@ -49,6 +50,22 @@ def require(condition):
 def target_digest(target):
     payload = json.dumps(target, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(payload).hexdigest()
+
+
+def load_test_target(path, name):
+    """Read exactly the selected config file; ignore CWD and legacy fallback files."""
+    raw = configuration.parse_yaml(path.read_text(encoding="utf-8-sig"), "test config")
+    packaged = configuration.parse_yaml(configuration.resource("config.example.yaml"), "built-in")
+    layer, _ = configuration.normalize_layer(
+        raw, packaged["sources"][configuration.DEFAULT_SOURCE_ID], "test config"
+    )
+    targets = layer.get("integration_tests", {})
+    if name not in targets:
+        raise AppError("Requested integration_tests target is not configured.")
+    target = deepcopy(targets[name])
+    expected = target.pop("expected_target_sha256")
+    validate_target(target, expected)
+    return target, expected
 
 
 def validate_target(target, expected_digest):
@@ -556,24 +573,44 @@ class LiveRun:
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument(
         "--run",
         action="store_true",
-        required=True,
         help="authorize writes of generated images; R2 also cleans its manifest",
     )
-    parser.add_argument("--target", type=Path, required=True, help="non-secret test target JSON")
+    mode.add_argument(
+        "--check", action="store_true", help="validate settings without cloud or writes"
+    )
     parser.add_argument(
-        "--expected-target-sha256",
+        "--config",
+        type=Path,
+        default=configuration.user_root() / "config.yaml",
+        help="config.yaml containing integration_tests (default: application user config)",
+    )
+    parser.add_argument(
+        "--test-target",
         required=True,
-        help="independently reviewed canonical target digest",
+        help="entry name under integration_tests, e.g. azure or r2",
     )
     args = parser.parse_args(argv)
     # SDK HTTP logs are never useful in credential-bearing live test processes.
     logging.disable(logging.CRITICAL)
     try:
-        target = json.loads(args.target.read_text(encoding="utf-8-sig"))
-        run = LiveRun(target, args.expected_target_sha256, PROJECT / ".local" / "integration")
+        target, expected = load_test_target(args.config.expanduser(), args.test_target)
+        if args.check:
+            print(
+                json.dumps(
+                    {
+                        "status": "valid",
+                        "test_target": args.test_target,
+                        "provider": target["provider"],
+                        "target_sha256": expected,
+                    }
+                )
+            )
+            return 0
+        run = LiveRun(target, expected, PROJECT / ".local" / "integration")
         code = run.execute()
         print(
             json.dumps(

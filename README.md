@@ -139,7 +139,7 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 tkn-object-storage-catalog --version
 ```
 
-`tkn-object-storage-catalog 0.3.1` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-object-storage-catalog 0.4.0` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
 コマンドとオプションの一覧は `tkn-object-storage-catalog --help` で確認できます。
@@ -157,6 +157,10 @@ tkn-object-storage-catalog config list
 `config init` は、`~/.tkn/object_storage_catalog/config.yaml` に設定ファイルのひな形を作成し、そのパスを表示します。
 `config list` は、有効な設定値と、各値がどの設定ファイルに由来するかを表示します。
 
+実環境テストの接続先も、この `config.yaml` の `integration_tests` に登録できます。
+通常の `sources` とは別に管理し、テスト時の保存先は毎回分離します。秘密値は記載しません。
+登録と実行方法は [Azure / R2 実環境統合テスト](docs/testing/live-storage.md) を参照してください。
+
 ### 2.4. 接続先と認証の設定
 
 作成された `config.yaml` を開き、source の `provider` と対応する接続設定を変更します。
@@ -166,7 +170,7 @@ tkn-object-storage-catalog config list
 **Azure Blob Storage**
 
 ```yaml
-schema_version: "3.0.0"
+schema_version: "3.1.0"
 sources:
   my-obj-storage-1:
     provider: azure
@@ -188,7 +192,7 @@ Azure 上では `azure.auth: managed_identity` も選べます。
 **AWS S3**
 
 ```yaml
-schema_version: "3.0.0"
+schema_version: "3.1.0"
 sources:
   my-obj-storage-1:
     provider: s3
@@ -209,7 +213,7 @@ SSE-KMS を使うバケットでは KMS の権限も必要です。
 **Cloudflare R2**
 
 ```yaml
-schema_version: "3.0.0"
+schema_version: "3.1.0"
 sources:
   my-obj-storage-1:
     provider: r2
@@ -552,7 +556,7 @@ Obsidian 上で画像がプレビュー表示されるかどうかは、利用�
 `delivery` と `conversion` は source ごとに変えられます。
 
 ```yaml
-schema_version: "3.0.0"
+schema_version: "3.1.0"
 sources:
   my-obj-storage-1:
     provider: azure
@@ -596,7 +600,7 @@ tkn-object-storage-catalog pull --source my-obj-storage-2 --dry-run
 
 旧設定が使われている状態での `config init` は、新しい設定で隠してしまわないように停止します。
 そのまま使う場合は `config list` で確認してください。
-手動で `3.0.0` へ移行する場合は、先に `config list --json` で確認した `data_root`・`state_root`・`notes_root` を明記します。
+手動で `3.1.0` へ移行する場合は、先に `config list --json` で確認した `data_root`・`state_root`・`notes_root` を明記します。
 新しいユーザー設定を作成すると、旧ユーザー設定の自動読み込みは終了します。
 
 ノートは次に更新する際に `schemaVersion: 2.0.0` となり、`blobName` / `blobUrl` を `objectKey` / `objectUrl` に置き換え、`storageProvider` を記録します。

@@ -1,3 +1,4 @@
+import json
 from copy import deepcopy
 from unittest.mock import Mock
 
@@ -8,13 +9,18 @@ from live_storage import (
     checked_key,
     cleanup_r2,
     isolated_settings,
+    load_test_target,
     run_prefix,
     safe_error,
     target_digest,
     validate_target,
 )
+from live_storage import (
+    main as live_main,
+)
 
 from tkn_object_storage_catalog import config as configuration
+from tkn_object_storage_catalog.errors import AppError
 
 RUN_ID = "20260101T000000Z-" + "a" * 32
 RELATIVE = "adapter/条件 画像.png"
@@ -209,3 +215,134 @@ def test_generated_image_import_uses_short_isolated_workspace(tmp_path):
         Image.new("RGB", (24, 16), "red").save(source)
         run.command(path, "import", source, "--name", "nested/生成 画像.png")
         assert Catalog(config).assets()[0]["relative_path"] == "nested/生成 画像.webp"
+
+
+def write_test_config(path, **targets):
+    value = {
+        "schema_version": "3.1.0",
+        "sources": {"ordinary": {"azure": {"container": "images"}}},
+        "integration_tests": {
+            name: item | {"expected_target_sha256": target_digest(item)}
+            for name, item in targets.items()
+        },
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value), encoding="utf-8")
+    return value
+
+
+@pytest.mark.parametrize("provider", ["azure", "r2"])
+def test_loads_named_target_from_shared_config_without_adding_sources(tmp_path, provider):
+    path = tmp_path / "config.yaml"
+    value = write_test_config(path, azure=target("azure"), r2=target())
+    before = path.read_bytes()
+    selected, expected = load_test_target(path, provider)
+    assert selected == target(provider)
+    assert expected == target_digest(selected)
+    cfg = configuration.load_config(path, home=tmp_path / "empty", cwd=tmp_path)
+    assert list(cfg.sources) == ["ordinary"]
+    assert cfg.source_id == "ordinary"
+    assert cfg.values["integration_tests"] == value["integration_tests"]
+    assert path.read_bytes() == before
+    assert not cfg.data_root.exists()
+
+
+def test_test_targets_replace_as_a_whole_and_track_origin(tmp_path):
+    user = tmp_path / "user" / "config.yaml"
+    explicit = tmp_path / "explicit.yaml"
+    write_test_config(user, azure=target("azure"), r2=target())
+    write_test_config(explicit, r2=target())
+    cfg = configuration.load_config(explicit, home=user.parent, cwd=tmp_path)
+    assert list(cfg.values["integration_tests"]) == ["r2"]
+    assert cfg.origins["integration_tests.r2.endpoint_url"] == str(explicit)
+    assert not any(key.startswith("integration_tests.azure") for key in cfg.origins)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"cleanup": "manifest"},
+        {"provider": "s3"},
+        {"bucket": "production"},
+        {"endpoint_url": "https://example.com?secret=hidden"},
+        {"expected_target_sha256": "bad"},
+        {"secret_access_key": "hidden-secret"},
+        {"endpoint_url": None},
+    ],
+)
+def test_invalid_shared_test_settings_are_rejected_without_writes(tmp_path, change):
+    path = tmp_path / "config.yaml"
+    value = write_test_config(path, azure=target("azure"))
+    value["integration_tests"]["azure"].update(change)
+    path.write_text(json.dumps(value), encoding="utf-8")
+    before = path.read_bytes()
+    with pytest.raises(AppError) as exc:
+        configuration.load_config(path, home=tmp_path / "empty", cwd=tmp_path)
+    assert "hidden-secret" not in str(exc.value)
+    assert path.read_bytes() == before
+
+
+def test_loader_checks_digest_and_never_falls_back_to_other_target(tmp_path):
+    path = tmp_path / "config.yaml"
+    value = write_test_config(path, r2=target())
+    with pytest.raises(AppError):
+        load_test_target(path, "missing")
+    value["integration_tests"]["r2"]["bucket"] = "other-tests"
+    path.write_text(json.dumps(value), encoding="utf-8")
+    with pytest.raises(AssertionError):
+        load_test_target(path, "r2")
+
+
+def test_default_config_check_ignores_cwd_and_creates_no_run(tmp_path, monkeypatch, capsys):
+    user_root = tmp_path / "user"
+    path = user_root / "config.yaml"
+    write_test_config(path, r2=target())
+    cwd = tmp_path / "project"
+    write_test_config(cwd / ".tkn/config.yaml", azure=target("azure"))
+    monkeypatch.chdir(cwd)
+    monkeypatch.setattr(configuration, "user_root", lambda: user_root)
+    forbidden = Mock(side_effect=AssertionError("Unexpected live execution"))
+    monkeypatch.setattr("live_storage.LiveRun", forbidden)
+    monkeypatch.setattr("live_storage.logging.disable", lambda level: None)
+    before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    assert live_main(["--check", "--test-target", "r2"]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "valid"
+    assert live_main(["--check", "--test-target", "azure"]) == 1
+    capsys.readouterr()
+    forbidden.assert_not_called()
+    assert before == {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+
+
+def test_test_settings_require_new_schema_and_can_be_cleared(tmp_path):
+    user = tmp_path / "user" / "config.yaml"
+    explicit = tmp_path / "explicit.yaml"
+    value = write_test_config(user, azure=target("azure"))
+    value["schema_version"] = "3.0.0"
+    user.write_text(json.dumps(value), encoding="utf-8")
+    with pytest.raises(AppError, match="requires config schema 3.1.0"):
+        configuration.load_config(home=user.parent, cwd=tmp_path)
+    write_test_config(user, azure=target("azure"))
+    explicit.write_text(
+        json.dumps({"schema_version": "3.1.0", "integration_tests": {}}), encoding="utf-8"
+    )
+    cfg = configuration.load_config(explicit, home=user.parent, cwd=tmp_path)
+    assert cfg.values["integration_tests"] == {}
+    assert list(cfg.sources) == ["ordinary"]
+    assert cfg.origins["integration_tests"] == str(explicit)
+    assert not any(key.startswith("integration_tests.") for key in cfg.origins)
+
+
+def test_explicit_run_uses_only_selected_target(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "config.yaml"
+    write_test_config(path, azure=target("azure"), r2=target())
+    run = Mock()
+    run.execute.return_value = 0
+    run.run_id = RUN_ID
+    run.report = {"status": "passed", "checks": [], "cleanup": {"policy": "retain"}}
+    factory = Mock(return_value=run)
+    monkeypatch.setattr("live_storage.LiveRun", factory)
+    monkeypatch.setattr("live_storage.logging.disable", lambda level: None)
+    assert live_main(["--run", "--config", str(path), "--test-target", "azure"]) == 0
+    assert factory.call_args.args[:2] == (target("azure"), target_digest(target("azure")))
+    run.execute.assert_called_once_with()
+    assert json.loads(capsys.readouterr().out)["provider"] == "azure"

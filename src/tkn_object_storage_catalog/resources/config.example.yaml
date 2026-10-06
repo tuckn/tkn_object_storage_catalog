@@ -1,6 +1,10 @@
 # Merge order: defaults, user, CWD, --config, CLI options.
 # A sources mapping replaces the preceding layer's entire sources mapping.
-schema_version: "3.0.0"
+schema_version: "3.1.0"
+# Optional live-test targets; not ordinary sources. Never put credentials here.
+# A mapping in a later config layer replaces all preceding integration_tests.
+# See docs/testing/live-storage.md for the full Azure/R2 setup.
+integration_tests: {}
 # Source IDs are custom labels, independent of account/container/bucket names.
 # One source manages one Azure container, AWS S3 bucket, or Cloudflare R2 bucket.
 sources:

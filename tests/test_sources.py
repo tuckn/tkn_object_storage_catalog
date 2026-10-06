@@ -63,8 +63,8 @@ def test_named_defaults_and_readonly_report(tmp_path):
     assert config.state_root == tmp_path / "home/.tkn/object_storage_catalog/state/my-obj-storage-1"
     assert config.notes_root == config.data_root / "notes"
     report = config.report()
-    assert report["config"]["schema_version"] == "3.0.0"
-    assert report["effective_schema_version"] == "3.0.0"
+    assert report["config"]["schema_version"] == "3.1.0"
+    assert report["effective_schema_version"] == "3.1.0"
     assert report["selected_source"] == "my-obj-storage-1"
     assert not (tmp_path / "home").exists()
 
