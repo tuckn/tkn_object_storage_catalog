@@ -121,6 +121,13 @@ flowchart LR
 クラウドへ接続するのは、`push`、`pull`、および `--remote` を付けた `status` と `verify` です。
 `push` と `pull` は、同期の結果を画像ノートの `syncStatus` にも反映します。
 
+| `syncStatus` | 意味 |
+| --- | --- |
+| `local` | ローカル登録時などの初期値です。`build` で公開用画像を再生成した場合も、この値に戻ります。クラウドに画像がないことや、未公開であることを意味しません。 |
+| `synced` | `push` / `pull` が、その画像の同期を正常に完了した記録です。転送せず内容の一致を確認した場合も含みます。 |
+
+`notes refresh` は既存の値を保持し、項目がない場合だけ `local` を追加します。現在のクラウドとの一致は `status --source <id> --remote` または `verify --source <id> --remote` で確認してください。これらは確認のみで、ノートの値は変えません。詳しくは [syncStatus と sourceAvailable](docs/reference/contracts.md#34-syncstatus-と-sourceavailable) を参照します。
+
 設定と実行時のデータは、このソース リポジトリの外に保存します。
 既定の保存先は、ホーム フォルダー配下の `~/.tkn/objstorage-imgcatalog/` です。
 各フォルダーの役割は「[6. 保存構造](#6-保存構造)」で説明します。
@@ -249,7 +256,7 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 tkn-objstorage-imgcatalog --version
 ```
 
-`tkn-objstorage-imgcatalog 0.9.0` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-objstorage-imgcatalog 0.9.1` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
 コマンドとオプションの一覧は `tkn-objstorage-imgcatalog --help` で確認できます。
@@ -752,7 +759,7 @@ tkn-objstorage-imgcatalog pull --source my-obj-storage-2 --dry-run
 - S3/R2 の一覧取得では各画像の HEAD も行い、転送確認では GET してハッシュを計算します。API 呼び出し・転送の料金に影響します。
 - RDF データベースは持ちません。処理の記録は、将来のグラフ形式への書き出しに使える構造で保存しています。
 - 同期は、更新日時だけで内容が同じだと判断しません。必要に応じて内容を読み取り、ハッシュ値で比較します。
-- ノートの `syncStatus: synced` は、最後に完了した転送の記録です。現在のクラウドの状態は、`status --remote` または `verify --remote` で確認します。
+- ノートの `syncStatus: synced` は、最後に正常完了した同期の記録です（転送不要で内容が一致した場合も含みます）。現在のクラウドの状態は、`status --remote` または `verify --remote` で確認します。
 
 ## 8. 更新と保守
 

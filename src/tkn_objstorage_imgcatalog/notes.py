@@ -145,12 +145,6 @@ def render_note(
         "cover": "releases/" + record["relative_path"],
         "updated": record["updated_at"],
     }
-    for field, key in (
-        ("legacySourceRef", "legacy_source_ref"),
-        ("sourceUnavailableReason", "source_unavailable_reason"),
-    ):
-        if key in record:
-            managed[field] = record[key]
     if sync_status:
         managed["syncStatus"] = sync_status
     elif "syncStatus" not in data:

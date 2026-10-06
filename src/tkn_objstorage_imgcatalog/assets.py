@@ -143,12 +143,6 @@ def record_from_note(config: Config, data: Any, relative_note: str) -> Record:
         }
         if data.get("acquiredFrom") is not None:
             item["release"]["acquired_from"] = data["acquiredFrom"]
-        for field, key in (
-            ("legacySourceRef", "legacy_source_ref"),
-            ("sourceUnavailableReason", "source_unavailable_reason"),
-        ):
-            if data.get(field) is not None:
-                item[key] = data[field]
         validate_record(config, item)
     except (KeyError, TypeError, ValueError) as exc:
         raise AppError(

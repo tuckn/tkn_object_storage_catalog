@@ -219,7 +219,7 @@ SHA-256 はバイト列を識別し、アセットIDは管理対象の画像を�
 ノートの更新は、このブロックだけを置き換えます。
 ブロックのない本文は保持し、末尾に新しいブロックを追加します。
 旧 `azure-blob-note:begin` / `azure-blob-note:end` ブロックは、次の更新で同じ位置の新しいブロックに置き換えます。新旧の混在や不完全なマーカーはエラーになります。
-`migrate` は旧 catalog と既存ノートを照合し、schemaVersion 3.0.0 に変換します。旧 CLI 管理項目 blobName / blobUrl は objectKey / objectUrl に置き換えます。ID、利用者の項目、コメント、生成ブロック外の本文を保持し、旧データにある `legacy_source_ref` / `source_unavailable_reason` は `legacySourceRef` / `sourceUnavailableReason` としてノートに引き継ぎます。
+`migrate` は旧 catalog と既存ノートを照合し、schemaVersion 3.0.0 に変換します。旧 CLI 管理項目 blobName / blobUrl は objectKey / objectUrl に置き換えます。ID、利用者の項目、コメント、生成ブロック外の本文を保持します。
 
 次の場合、ノートの更新は停止します。
 
@@ -234,9 +234,18 @@ SHA-256 はバイト列を識別し、アセットIDは管理対象の画像を�
 
 ### 3.4. `syncStatus` と `sourceAvailable`
 
-`syncStatus: synced` は、最後に完了した転送の記録です。
-現在のクラウドの状態を表すものではありません。
-現在の状態は `status --remote` または `verify --remote` で確認します。
+`syncStatus` は、CLI がノートに残す操作時点の記録です。CLI が設定する値は `local` と `synced` です。
+
+| 値 | 意味・設定される条件 |
+| --- | --- |
+| `local` | ローカルで登録・再生成した段階の記録です。`syncStatus` のないノートを生成・更新するときの初期値であり、新規 `import` や旧ノートへの項目追加で設定されます。`build` が公開用画像を再生成した場合も、この値に戻します。 |
+| `synced` | 通常実行の `push` / `pull` が、その画像の同期を正常に完了した記録です。転送せず内容の一致を確認した場合も設定されます。 |
+
+`local` は「クラウドに画像がない」「未公開」という判定ではありません。すでに公開済みの画像をローカルに登録した場合や、旧ノートに初期値を付けた場合にも `local` になります。`status: published` など、利用者が持つ公開情報とは別の項目です。
+
+`notes refresh` は、既存の `syncStatus` を保持し、項目がない場合だけ `local` を追加します。`--dry-run` はノートを書き換えません。
+
+どちらの値も、現在のクラウドとの一致を保証するものではありません。現在の状態は `status --source <id> --remote` または `verify --source <id> --remote` で確認します。これらの確認コマンドは `syncStatus` を書き換えません。
 
 原本を持たないアセットは `sourceAvailable: false` になります。
 これは、`pull` で クラウドから新しく取り込んだ画像と、`pull` で内容を置き換えた既存のアセットが該当します。

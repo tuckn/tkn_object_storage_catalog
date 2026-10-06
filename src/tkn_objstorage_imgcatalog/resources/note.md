@@ -14,8 +14,6 @@ sourceRef:
 originalRef:
 sourceSha256:
 sourceCapturedAt:
-sourceUnavailableReason:
-legacySourceRef:
 
 # --- Release and generation ---
 acquiredFrom:

@@ -194,7 +194,7 @@ def test_migration_can_resume_after_new_note_was_written(cfg, asset):
     assert NoteStore(cfg).assets()[0] == asset
 
 
-def test_migration_preserves_assets_without_original_and_legacy_references(cfg, asset):
+def test_migration_without_original_does_not_emit_legacy_properties(cfg, asset):
     asset["source"] = None
     asset["legacy_source_ref"] = "file:///C:/path/to/old/photo.webp"
     asset["source_unavailable_reason"] = "original_not_available"
@@ -204,10 +204,12 @@ def test_migration_preserves_assets_without_original_and_legacy_references(cfg, 
         migrate(cfg, operation)
     actual = NoteStore(cfg).assets()[0]
     assert actual["source"] is None
-    assert actual["legacy_source_ref"] == asset["legacy_source_ref"]
+    assert "legacy_source_ref" not in actual
+    assert "source_unavailable_reason" not in actual
     data, _ = split_note(note.read_text(encoding="utf-8"))
     assert data["sourceAvailable"] is False
-    assert data["sourceUnavailableReason"] == "original_not_available"
+    assert "sourceUnavailableReason" not in data
+    assert "legacySourceRef" not in data
 
 
 def test_migration_nested_notes(cfg, asset):

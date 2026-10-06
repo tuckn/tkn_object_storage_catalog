@@ -110,8 +110,6 @@ def migrate(config: Config, operation: Operation) -> Record:
             "releaseGeneratedAt",
             "sourceCapturedAt",
             "acquiredFrom",
-            "legacySourceRef",
-            "sourceUnavailableReason",
         ):
             if key in data and data[key] != new_data.get(key):
                 raise ConflictError(

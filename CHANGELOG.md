@@ -1,5 +1,9 @@
 # 変更履歴
 
+## 0.9.1 — 2026-10-07
+
+- legacySourceRef / sourceUnavailableReason をノートの生成項目から削除し、旧データからの専用読み取り・引き継ぎ・照合処理を廃止しました。原本の有無は sourceAvailable で表します。
+
 ## 0.9.0 — 2026-10-06
 
 - Frontmatter の順番・英語コメント・本文を resources/note.md に外出ししました。テンプレートの項目を並べ替えるだけで出力順を変更できます。
