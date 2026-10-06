@@ -25,17 +25,19 @@ PROJECT = Path(__file__).resolve().parents[1]
 # Exercise this checkout even when a moved virtualenv has an old editable-install path.
 sys.path.insert(0, str(PROJECT / "src"))
 
+import boto3  # noqa: E402
 from azure.core.exceptions import HttpResponseError  # noqa: E402
+from botocore.config import Config as SDKConfig  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
 from PIL import Image  # noqa: E402
 
-from tkn_object_storage_catalog import cli  # noqa: E402
-from tkn_object_storage_catalog import config as configuration  # noqa: E402
-from tkn_object_storage_catalog.catalog import Catalog, make_record  # noqa: E402
-from tkn_object_storage_catalog.errors import AppError  # noqa: E402
-from tkn_object_storage_catalog.io import sha256  # noqa: E402
-from tkn_object_storage_catalog.notes import find_note, serialize, split_note  # noqa: E402
-from tkn_object_storage_catalog.storage import open_store  # noqa: E402
+from tkn_objstorage_imgcatalog import cli  # noqa: E402
+from tkn_objstorage_imgcatalog import config as configuration  # noqa: E402
+from tkn_objstorage_imgcatalog.catalog import Catalog, make_record  # noqa: E402
+from tkn_objstorage_imgcatalog.errors import AppError  # noqa: E402
+from tkn_objstorage_imgcatalog.io import sha256  # noqa: E402
+from tkn_objstorage_imgcatalog.notes import find_note, serialize, split_note  # noqa: E402
+from tkn_objstorage_imgcatalog.storage import open_store  # noqa: E402
 
 RUN_PATTERN = r"\d{8}T\d{6}Z-[0-9a-f]{32}"
 RELATIVES = frozenset({"nested/生成 画像.webp", "adapter/条件 画像.png"})
@@ -70,21 +72,31 @@ def load_test_target(path, name):
 
 def validate_target(target, expected_digest):
     require(isinstance(target, dict))
-    require(set(target) == {"provider", "endpoint_url", "bucket", "cleanup"})
+    try:
+        configuration.validate_integration_tests(
+            {"selected": target | {"expected_target_sha256": expected_digest}}, "live test"
+        )
+    except AppError:
+        require(False)
     require(target_digest(target) == expected_digest)
-    provider = target["provider"]
-    require(provider in {"azure", "r2"})
-    require(target["cleanup"] == ("retain" if provider == "azure" else "manifest"))
-    require(isinstance(target["bucket"], str))
-    require(re.fullmatch(r"[a-z0-9][a-z0-9-]{1,61}[a-z0-9]", target["bucket"]))
-    require(bool({"test", "tests"}.intersection(target["bucket"].split("-"))))
-    domain = (
-        r"https://[a-z0-9]{3,24}\.blob\.core\.windows\.net"
-        if provider == "azure"
-        else r"https://[0-9a-f]{32}\.r2\.cloudflarestorage\.com"
+
+
+def verify_s3_identity(target):
+    """Use the dedicated profile, never injected R2 keys or a default profile."""
+    session = boto3.Session(profile_name=target["profile"])
+    with session.client(
+        "sts",
+        region_name=target["region"],
+        config=SDKConfig(ignore_configured_endpoint_urls=True),
+    ) as client:
+        identity = client.get_caller_identity()
+    role = target["role_arn"].split(":role/", 1)[1]
+    expected = f"arn:aws:sts::{target['account_id']}:assumed-role/{role}/"
+    require(identity.get("Account") == target["account_id"])
+    arn = identity.get("Arn", "")
+    require(
+        arn.startswith(expected) and bool(arn[len(expected) :]) and "/" not in arn[len(expected) :]
     )
-    require(isinstance(target["endpoint_url"], str))
-    require(re.fullmatch(domain, target["endpoint_url"]))
 
 
 def run_prefix(run_id):
@@ -124,10 +136,12 @@ def anonymous_denied(url, provider):
         with urlopen(url, timeout=30):
             raise AssertionError("Generated image was anonymously readable.")
     except HTTPError as exc:
-        if exc.code in {401, 403}:
+        if provider != "s3" and exc.code in {401, 403}:
             return
         body = ElementTree.fromstring(exc.read(8192))
-        if provider == "azure":
+        if provider == "s3":
+            require(exc.code == 403 and body.findtext("Code") == "AccessDenied")
+        elif provider == "azure":
             require(exc.code == 409 and body.findtext("Code") == "PublicAccessNotPermitted")
         else:
             require(
@@ -168,13 +182,25 @@ def isolated_settings(root):
 
 
 def cleanup_r2(target, expected_digest, run_id, manifest, store):
-    validate_target(target, expected_digest)
     require(target["provider"] == "r2")
+    return cleanup_manifest(target, expected_digest, run_id, manifest, store)
+
+
+def cleanup_s3(target, expected_digest, run_id, manifest, store):
+    require(target["provider"] == "s3")
+    require(store.config.s3["profile"] == target["profile"])
+    require(store.config.s3["region"] == target["region"])
+    return cleanup_manifest(target, expected_digest, run_id, manifest, store)
+
+
+def cleanup_manifest(target, expected_digest, run_id, manifest, store):
+    validate_target(target, expected_digest)
+    require(target["provider"] in {"r2", "s3"})
     require(
         store.config.target_identity
         == {
-            "provider": "r2",
-            "endpoint_url": target["endpoint_url"],
+            "provider": target["provider"],
+            "endpoint_url": target["endpoint_url"] or "aws",
             "bucket": target["bucket"],
             "prefix": run_prefix(run_id).rstrip("/"),
         }
@@ -192,7 +218,8 @@ def cleanup_r2(target, expected_digest, run_id, manifest, store):
         # A colliding/replaced object is retained, never swept up by prefix deletion.
         require(remote["metadata"].get("asset_id") == entry["asset_id"])
         require(store.digest(relative, remote["etag"]) in entry["sha256"])
-        store.client.delete_object(Bucket=target["bucket"], Key=entry["key"])
+        options = {"IfMatch": remote["etag"]} if target["provider"] == "s3" else {}
+        store.client.delete_object(Bucket=target["bucket"], Key=entry["key"], **options)
         deleted += 1
     return deleted
 
@@ -222,7 +249,7 @@ class LiveRun:
             "checks": [],
             "cleanup": {"policy": target["cleanup"], "status": "pending"},
             "unverified": [
-                "AWS S3",
+                "credential refresh beyond one-hour role session",
                 "managed identity",
                 "lifecycle timing and restore",
                 "large/multipart transfers",
@@ -272,8 +299,8 @@ class LiveRun:
             source["s3"] = {
                 "endpoint_url": self.target["endpoint_url"],
                 "bucket": self.target["bucket"],
-                "region": "auto",
-                "profile": None,
+                "region": self.target.get("region", "auto"),
+                "profile": self.target.get("profile"),
                 "prefix": self.prefix.rstrip("/"),
             }
         path = root / "config.yaml"
@@ -310,7 +337,7 @@ class LiveRun:
         self.save()
 
     def remote_keys(self):
-        if self.target["provider"] == "r2":
+        if self.target["provider"] in {"r2", "s3"}:
             pages = self.store.client.get_paginator("list_objects_v2").paginate(
                 Bucket=self.target["bucket"], Prefix=self.prefix
             )
@@ -322,6 +349,20 @@ class LiveRun:
         pull_path, pull_config = self.settings("receiver")
         self.store = open_store(config)
         self.check("new run prefix is empty", lambda: require(not self.remote_keys()))
+        if self.target["provider"] == "s3":
+            self.check(
+                "missing HEAD returns 404",
+                lambda: expect_http(
+                    lambda: self.store.client.head_object(
+                        Bucket=self.target["bucket"], Key=self.prefix + "nested/生成 画像.webp"
+                    ),
+                    {404},
+                ),
+            )
+            self.check(
+                "adapter maps missing HEAD to None",
+                lambda: require(self.store.get("nested/生成 画像.webp") is None),
+            )
         source = self.work_root / "generated.png"
         Image.new("RGB", (24, 16), (10, 80, 140)).save(source)
         self.check(
@@ -362,7 +403,7 @@ class LiveRun:
         )
 
         def headers():
-            if self.target["provider"] == "r2":
+            if self.target["provider"] in {"r2", "s3"}:
                 raw = self.store.client.head_object(
                     Bucket=self.target["bucket"], Key=self.prefix + relative
                 )
@@ -377,7 +418,7 @@ class LiveRun:
             require(remote["metadata"]["sha256"] == record["release"]["sha256"])
 
         self.check("content type, cache control and metadata", headers)
-        from tkn_object_storage_catalog.notes import urls
+        from tkn_objstorage_imgcatalog.notes import urls
 
         self.check(
             "existing generated object denies anonymous GET",
@@ -530,6 +571,11 @@ class LiveRun:
                 require(
                     not os.environ.get("AWS_PROFILE") and not os.environ.get("AWS_SESSION_TOKEN")
                 )
+            if self.target["provider"] == "s3":
+                self.check(
+                    "dedicated profile STS account and role",
+                    lambda: verify_s3_identity(self.target),
+                )
             with isolated_settings(self.work_root):
                 self.scenario()
         except Exception as exc:
@@ -539,8 +585,9 @@ class LiveRun:
             cleanup = self.report["cleanup"]
             if self.store is not None:
                 try:
-                    if self.target["provider"] == "r2":
-                        cleanup["deleted"] = cleanup_r2(
+                    if self.target["provider"] in {"r2", "s3"}:
+                        cleaner = cleanup_s3 if self.target["provider"] == "s3" else cleanup_r2
+                        cleanup["deleted"] = cleaner(
                             self.target,
                             self.expected_digest,
                             self.run_id,
@@ -549,7 +596,7 @@ class LiveRun:
                         )
                     remaining = self.remote_keys()
                     cleanup["remaining"] = len(remaining)
-                    if self.target["provider"] == "r2":
+                    if self.target["provider"] in {"r2", "s3"}:
                         require(not remaining)
                         cleanup["status"] = "passed"
                     else:
@@ -577,7 +624,7 @@ def main(argv=None):
     mode.add_argument(
         "--run",
         action="store_true",
-        help="authorize writes of generated images; R2 also cleans its manifest",
+        help="authorize writes of generated images; R2/S3 also clean their manifests",
     )
     mode.add_argument(
         "--check", action="store_true", help="validate settings without cloud or writes"
@@ -591,7 +638,7 @@ def main(argv=None):
     parser.add_argument(
         "--test-target",
         required=True,
-        help="entry name under integration_tests, e.g. azure or r2",
+        help="entry name under integration_tests, e.g. azure, r2 or s3",
     )
     args = parser.parse_args(argv)
     # SDK HTTP logs are never useful in credential-bearing live test processes.

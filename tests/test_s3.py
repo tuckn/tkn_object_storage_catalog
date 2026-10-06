@@ -11,11 +11,11 @@ from botocore.exceptions import ClientError
 from botocore.response import StreamingBody
 from botocore.stub import ANY, Stubber
 
-import tkn_object_storage_catalog.s3 as module
-from tkn_object_storage_catalog.catalog import Catalog, Operation
-from tkn_object_storage_catalog.errors import AppError, ConflictError
-from tkn_object_storage_catalog.s3 import S3Objects
-from tkn_object_storage_catalog.sync import push
+import tkn_objstorage_imgcatalog.s3 as module
+from tkn_objstorage_imgcatalog.catalog import Catalog, Operation
+from tkn_objstorage_imgcatalog.errors import AppError, ConflictError
+from tkn_objstorage_imgcatalog.s3 import S3Objects
+from tkn_objstorage_imgcatalog.sync import push
 
 
 @pytest.fixture(params=["s3", "r2"])

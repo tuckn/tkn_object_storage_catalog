@@ -22,7 +22,7 @@ CLIはこのcheckoutの `cli.main` をプロセス内で呼び、parser・設定
 
 `uv sync --locked` で開発環境を準備します。リポジトリ移動後は、現在の `.venv/Scripts/python.exe` とR2起動補助のパスを確認してください。テストプログラムは現在のcheckoutの `src` を優先して読みます。
 
-普段の `~/.tkn/object_storage_catalog/config.yaml` に、非秘密の接続先を `integration_tests` として追加します。通常の `sources` はそのまま残します。先に `uv tool install . --reinstall` でインストール済みCLIを0.4.0以降へ更新し、設定の `schema_version` を `"3.1.0"` にしてください。
+普段の `~/.tkn/objstorage-imgcatalog/config.yaml` に、非秘密の接続先を `integration_tests` として追加します。通常の `sources` はそのまま残します。先に `uv tool install . --reinstall` でインストール済みCLIを0.4.0以降へ更新し、設定の `schema_version` を `"3.1.0"` にしてください。
 
 以下は追加する部分の例です。既存の設定全体を置き換えず、承認済みの引き継ぎ資料の値へ書き換えてください。ハッシュ欄も、後述のレビュー時に算出した64桁の値が必要です。
 
@@ -56,7 +56,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, "tests")
 from live_storage import configuration, target_digest
-path = Path.home() / ".tkn/object_storage_catalog/config.yaml"
+path = Path.home() / ".tkn/objstorage-imgcatalog/config.yaml"
 config = configuration.parse_yaml(path.read_text(encoding="utf-8-sig"), "test config")
 for name, settings in config["integration_tests"].items():
     target = {key: value for key, value in settings.items() if key != "expected_target_sha256"}

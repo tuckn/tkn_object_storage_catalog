@@ -19,8 +19,8 @@ from live_storage import (
     main as live_main,
 )
 
-from tkn_object_storage_catalog import config as configuration
-from tkn_object_storage_catalog.errors import AppError
+from tkn_objstorage_imgcatalog import config as configuration
+from tkn_objstorage_imgcatalog.errors import AppError
 
 RUN_ID = "20260101T000000Z-" + "a" * 32
 RELATIVE = "adapter/条件 画像.png"
@@ -205,7 +205,7 @@ def test_normal_config_is_never_read_and_roots_are_isolated(tmp_path):
 def test_generated_image_import_uses_short_isolated_workspace(tmp_path):
     from PIL import Image
 
-    from tkn_object_storage_catalog.catalog import Catalog
+    from tkn_objstorage_imgcatalog.catalog import Catalog
 
     value = target("azure")
     run = LiveRun(value, target_digest(value), tmp_path)
@@ -346,3 +346,214 @@ def test_explicit_run_uses_only_selected_target(tmp_path, monkeypatch, capsys):
     assert factory.call_args.args[:2] == (target("azure"), target_digest(target("azure")))
     run.execute.assert_called_once_with()
     assert json.loads(capsys.readouterr().out)["provider"] == "azure"
+
+
+S3_TARGET = {
+    "provider": "s3",
+    "endpoint_url": None,
+    "region": "ap-northeast-1",
+    "bucket": "example-catalog-tests",
+    "cleanup": "manifest",
+    "profile": "example-catalog-test",
+    "account_id": "123456789012",
+    "role_arn": "arn:aws:iam::123456789012:role/example-catalog-test",
+}
+
+
+def test_s3_config_preserves_existing_targets_and_sources(tmp_path):
+    path = tmp_path / "config.yaml"
+    value = write_test_config(path, azure=target("azure"), r2=target(), s3=S3_TARGET)
+    selected, digest = load_test_target(path, "s3")
+    assert selected == S3_TARGET
+    cfg = configuration.load_config(path, home=tmp_path / "empty", cwd=tmp_path)
+    assert list(cfg.sources) == ["ordinary"]
+    assert cfg.values["integration_tests"] == value["integration_tests"]
+    run = LiveRun(selected, digest, tmp_path / "reports")
+    _, settings = run.settings("sender")
+    assert settings.provider == "s3"
+    assert settings.s3["profile"] == S3_TARGET["profile"]
+    assert settings.s3["region"] == S3_TARGET["region"]
+    assert settings.s3["endpoint_url"] is None
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"endpoint_url": "https://s3.ap-northeast-1.amazonaws.com"},
+        {"region": "auto"},
+        {"profile": "default"},
+        {"account_id": 123456789012},
+        {"role_arn": "arn:aws:iam::999999999999:role/example-catalog-test"},
+        {"cleanup": "retain"},
+        {"session_token": "secret"},
+    ],
+)
+def test_s3_rejects_invalid_identity_or_endpoint(change):
+    value = S3_TARGET | change
+    with pytest.raises(AssertionError):
+        validate_target(value, target_digest(value))
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("profile", "different-test"),
+        ("region", "us-east-1"),
+        ("account_id", "999999999999"),
+        ("role_arn", "arn:aws:iam::123456789012:role/other-test"),
+        ("bucket", "other-tests"),
+    ],
+)
+def test_s3_identity_fields_are_bound_to_reviewed_digest(field, value):
+    with pytest.raises(AssertionError):
+        validate_target(S3_TARGET | {field: value}, target_digest(S3_TARGET))
+
+
+@pytest.mark.parametrize(
+    "identity,accepted",
+    [
+        (
+            {
+                "Account": "123456789012",
+                "Arn": "arn:aws:sts::123456789012:assumed-role/example-catalog-test/session",
+            },
+            True,
+        ),
+        (
+            {
+                "Account": "999999999999",
+                "Arn": "arn:aws:sts::123456789012:assumed-role/example-catalog-test/session",
+            },
+            False,
+        ),
+        ({"Account": "123456789012", "Arn": "arn:aws:iam::123456789012:user/example"}, False),
+        (
+            {
+                "Account": "123456789012",
+                "Arn": "arn:aws:sts::123456789012:assumed-role/other-test/session",
+            },
+            False,
+        ),
+    ],
+)
+def test_s3_checks_assumed_role_using_explicit_profile(monkeypatch, identity, accepted):
+    from unittest.mock import MagicMock
+
+    from live_storage import verify_s3_identity
+
+    session = MagicMock()
+    session.return_value.client.return_value.__enter__.return_value.get_caller_identity.return_value = identity
+    monkeypatch.setattr("live_storage.boto3.Session", session)
+    monkeypatch.setenv("AWS_PROFILE", "unrelated")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "injected-r2")
+    if accepted:
+        verify_s3_identity(S3_TARGET)
+    else:
+        with pytest.raises(AssertionError):
+            verify_s3_identity(S3_TARGET)
+    session.assert_called_once_with(profile_name=S3_TARGET["profile"])
+    assert session.return_value.client.call_args.kwargs["config"].ignore_configured_endpoint_urls
+
+
+def s3_cleanup_fixture(run_id=RUN_ID):
+    _, manifest, store = cleanup_fixture(run_id)
+    store.config.target_identity.update(
+        provider="s3", endpoint_url="aws", bucket=S3_TARGET["bucket"]
+    )
+    store.config.s3 = {"profile": S3_TARGET["profile"], "region": S3_TARGET["region"]}
+    return manifest, store
+
+
+def test_s3_cleanup_uses_verified_etag():
+    from live_storage import cleanup_s3
+
+    manifest, store = s3_cleanup_fixture()
+    assert cleanup_s3(S3_TARGET, target_digest(S3_TARGET), RUN_ID, manifest, store) == 1
+    store.client.delete_object.assert_called_once_with(
+        Bucket=S3_TARGET["bucket"], Key=checked_key(RUN_ID, RELATIVE), IfMatch="revision"
+    )
+    store.client.get_paginator.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "failure", ["key", "manifest", "identity", "owner", "bytes", "profile", "region"]
+)
+def test_s3_cleanup_refuses_unverified_objects(failure):
+    from live_storage import cleanup_s3
+
+    manifest, store = s3_cleanup_fixture()
+    if failure == "key":
+        manifest[RELATIVE]["key"] = "runs/other/image.png"
+    elif failure == "manifest":
+        manifest["unrelated.png"] = deepcopy(manifest[RELATIVE])
+    elif failure == "identity":
+        store.config.target_identity["bucket"] = "other-tests"
+    elif failure == "owner":
+        store.get.return_value["metadata"]["asset_id"] = "different"
+    elif failure == "bytes":
+        store.digest.return_value = "c" * 64
+    else:
+        store.config.s3[failure] = "different"
+    with pytest.raises(AssertionError):
+        cleanup_s3(S3_TARGET, target_digest(S3_TARGET), RUN_ID, manifest, store)
+    store.client.delete_object.assert_not_called()
+
+
+@pytest.mark.parametrize("cleanup_failure", [False, True])
+def test_s3_finally_cleans_after_scenario_failure(tmp_path, monkeypatch, cleanup_failure):
+    run = LiveRun(S3_TARGET, target_digest(S3_TARGET), tmp_path)
+    run.manifest, run.store = s3_cleanup_fixture(run.run_id)
+    run.scenario = Mock(side_effect=RuntimeError("private error"))
+    run.remote_keys = Mock(return_value=[])
+    monkeypatch.setattr("live_storage.verify_s3_identity", lambda target: None)
+    if cleanup_failure:
+        run.store.client.delete_object.side_effect = ClientError(
+            {"Error": {"Code": "PreconditionFailed"}, "ResponseMetadata": {"HTTPStatusCode": 412}},
+            "DeleteObject",
+        )
+    assert run.execute() == 1
+    assert run.report["cleanup"]["status"] == ("failed" if cleanup_failure else "passed")
+    if cleanup_failure:
+        assert run.report["cleanup"]["error"]["http_status"] == 412
+    else:
+        assert run.report["cleanup"]["deleted"] == 1
+
+
+def test_identity_failure_prevents_any_storage_connection(tmp_path, monkeypatch):
+    run = LiveRun(S3_TARGET, target_digest(S3_TARGET), tmp_path)
+    monkeypatch.setattr("live_storage.verify_s3_identity", Mock(side_effect=AssertionError()))
+    run.scenario = Mock()
+    assert run.execute() == 1
+    run.scenario.assert_not_called()
+    assert run.report["cleanup"]["status"] == "not_connected"
+
+
+@pytest.mark.parametrize(
+    "status,code,accepted",
+    [
+        (403, "AccessDenied", True),
+        (401, "AccessDenied", False),
+        (403, "InvalidAccessKeyId", False),
+        (404, "NoSuchKey", False),
+        (400, "InvalidArgument", False),
+    ],
+)
+def test_s3_anonymous_requires_403_access_denied(monkeypatch, status, code, accepted):
+    from io import BytesIO
+    from urllib.error import HTTPError
+
+    from live_storage import anonymous_denied
+
+    error = HTTPError(
+        "https://example.invalid",
+        status,
+        "",
+        {},
+        BytesIO(f"<Error><Code>{code}</Code><Message>Authorization</Message></Error>".encode()),
+    )
+    monkeypatch.setattr("live_storage.urlopen", Mock(side_effect=error))
+    if accepted:
+        anonymous_denied("https://example.invalid", "s3")
+    else:
+        with pytest.raises(AssertionError):
+            anonymous_denied("https://example.invalid", "s3")

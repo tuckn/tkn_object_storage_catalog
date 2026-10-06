@@ -21,7 +21,7 @@ from .recovery import recover
 from .storage import open_store
 from .sync import pull, push, status, verify
 
-LOGGER = logging.getLogger("tkn_object_storage_catalog")
+LOGGER = logging.getLogger("tkn_objstorage_imgcatalog")
 SUCCESS = 25
 logging.addLevelName(SUCCESS, "SUCCESS")
 
@@ -101,7 +101,7 @@ def mutating(parser: argparse.ArgumentParser) -> None:
 
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(
-        prog="tkn-object-storage-catalog",
+        prog="tkn-objstorage-imgcatalog",
         description="Catalog images in Azure Blob Storage, AWS S3, and Cloudflare R2 with Obsidian metadata.",
     )
     root.add_argument("--version", action="version", version=f"%(prog)s {__version__}")

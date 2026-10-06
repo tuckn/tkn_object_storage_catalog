@@ -1,4 +1,4 @@
-# tkn-object-storage-catalog: Tkn Object Storage Catalog
+# tkn-objstorage-imgcatalog: Tkn Object Storage Image Catalog
 
 Azure Blob Storage・AWS S3・Cloudflare R2 の画像を、手元の原本・公開用画像・Obsidian の Markdown メタデータと対応付けて管理するカタログ CLI です。
 1つの source が特定のコンテナーまたはバケットに対応します。画像ごとの説明、タグ、関連はノートに記録できます。
@@ -106,7 +106,7 @@ flowchart LR
 `push` と `pull` は、同期の結果を画像ノートの `syncStatus` にも反映します。
 
 設定と実行時のデータは、このソース リポジトリの外に保存します。
-既定の保存先は、ホーム フォルダー配下の `~/.tkn/object_storage_catalog/` です。
+既定の保存先は、ホーム フォルダー配下の `~/.tkn/objstorage-imgcatalog/` です。
 各フォルダーの役割は「[6. 保存構造](#6-保存構造)」で説明します。
 
 ## 2. セットアップ
@@ -124,10 +124,10 @@ flowchart LR
 ### 2.2. インストール
 
 クローンしたリポジトリのフォルダーへ移動し、インストールします。
-`C:\path\to\tkn_object_storage_catalog` は、実際のフォルダーのパスに置き換えます。
+`C:\path\to\tkn_objstorage_imgcatalog` は、実際のフォルダーのパスに置き換えます。
 
 ```shell
-cd "C:\path\to\tkn_object_storage_catalog"
+cd "C:\path\to\tkn_objstorage_imgcatalog"
 uv tool install .
 ```
 
@@ -136,13 +136,13 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 インストールできたことを確認します。
 
 ```shell
-tkn-object-storage-catalog --version
+tkn-objstorage-imgcatalog --version
 ```
 
-`tkn-object-storage-catalog 0.4.0` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-objstorage-imgcatalog 0.4.2` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
-コマンドとオプションの一覧は `tkn-object-storage-catalog --help` で確認できます。
+コマンドとオプションの一覧は `tkn-objstorage-imgcatalog --help` で確認できます。
 `--version` と `--help` は、設定やクラウドの認証が済んでいなくても表示されます。
 
 ### 2.3. 設定ファイルの作成
@@ -150,11 +150,11 @@ tkn-object-storage-catalog --version
 設定ファイルを作成し、作成先と現在の設定値を確認します。
 
 ```shell
-tkn-object-storage-catalog config init
-tkn-object-storage-catalog config list
+tkn-objstorage-imgcatalog config init
+tkn-objstorage-imgcatalog config list
 ```
 
-`config init` は、`~/.tkn/object_storage_catalog/config.yaml` に設定ファイルのひな形を作成し、そのパスを表示します。
+`config init` は、`~/.tkn/objstorage-imgcatalog/config.yaml` に設定ファイルのひな形を作成し、そのパスを表示します。
 `config list` は、有効な設定値と、各値がどの設定ファイルに由来するかを表示します。
 
 実環境テストの接続先も、この `config.yaml` の `integration_tests` に登録できます。
@@ -239,7 +239,7 @@ R2 の S3 API エンドポイントはブラウザー向けの配信 URL とし�
 **設定の確認**
 
 ```shell
-tkn-object-storage-catalog config list
+tkn-objstorage-imgcatalog config list
 ```
 
 認証情報は、この CLI の YAML・画像ノート・実行記録には保存しません。`.env` ファイルも読み込みません。
@@ -258,7 +258,7 @@ S3 と R2 では同じ `s3` 設定ブロックを使います。`provider` に�
 `C:\path\to\photo.png` は、実在する画像のパスに置き換えます。
 
 ```shell
-tkn-object-storage-catalog import "C:\path\to\photo.png"
+tkn-objstorage-imgcatalog import "C:\path\to\photo.png"
 ```
 
 原本が `originals/<sha256>/` に保存され、公開用画像 `releases/photo.webp` と画像ノート `notes/photo.webp.md` が作成されます。
@@ -291,8 +291,8 @@ JPEG や PNG を変換せずに取り込むには、`import --no-convert` を使
 **2. アップロードの内容を確認してから、アップロードします。**
 
 ```shell
-tkn-object-storage-catalog push photo.webp --dry-run
-tkn-object-storage-catalog push photo.webp
+tkn-objstorage-imgcatalog push photo.webp --dry-run
+tkn-objstorage-imgcatalog push photo.webp
 ```
 
 > [!IMPORTANT]
@@ -306,7 +306,7 @@ tkn-object-storage-catalog push photo.webp
 **3. クラウド上の画像が手元と一致することを確認します。**
 
 ```shell
-tkn-object-storage-catalog verify --remote
+tkn-objstorage-imgcatalog verify --remote
 ```
 
 表示された JSON の `valid` が `true` であれば、手元の画像、原本、画像ノート、クラウド上の画像に不整合はありません。
@@ -314,11 +314,11 @@ tkn-object-storage-catalog verify --remote
 
 **4. Obsidian でノートを開きます（任意）。**
 
-データ保存領域（既定では `~/.tkn/object_storage_catalog/data/my-obj-storage-1`）を Obsidian の Vault として開き、`notes` フォルダーのノートを開きます。
+データ保存領域（既定では `~/.tkn/objstorage-imgcatalog/data/my-obj-storage-1`）を Obsidian の Vault として開き、`notes` フォルダーのノートを開きます。
 既定の配置では、ノートと手元の画像が同じ Vault に入るため、ノート内に画像が表示されます。
 `description`、`tags`、`nouns`、`domains`、`projects` と本文を自由に編集します。
 
-`tkn-object-storage-catalog notes refresh` を実行すると、ギャラリー表示用の `notes/images.base`（Obsidian Bases のビュー）が、存在しない場合に作成されます。
+`tkn-objstorage-imgcatalog notes refresh` を実行すると、ギャラリー表示用の `notes/images.base`（Obsidian Bases のビュー）が、存在しない場合に作成されます。
 
 既存の Vault に組み込む方法は「[5.2. 既存の Vault にノートを置く](#52-既存の-vault-にノートを置く)」で説明します。
 
@@ -326,27 +326,27 @@ tkn-object-storage-catalog verify --remote
 
 ```shell
 # フォルダーを取り込む。フォルダー内の相対的な階層を保つ。
-tkn-object-storage-catalog import "C:\path\to\images"
+tkn-objstorage-imgcatalog import "C:\path\to\images"
 
 # 引数を省略すると、データ保存領域の staging フォルダーを取り込む。
-tkn-object-storage-catalog import
+tkn-objstorage-imgcatalog import
 
 # 手元の状態を確認する。--remote を付けると クラウドとも比較する。
-tkn-object-storage-catalog status
-tkn-object-storage-catalog status --remote
+tkn-objstorage-imgcatalog status
+tkn-objstorage-imgcatalog status --remote
 
 # 設定した範囲の管理対象画像をすべて転送する。
-tkn-object-storage-catalog push
-tkn-object-storage-catalog pull
+tkn-objstorage-imgcatalog push
+tkn-objstorage-imgcatalog pull
 
 # 変換設定を変えた後、保存してある原本から公開用画像を作り直す。
-tkn-object-storage-catalog build
+tkn-objstorage-imgcatalog build
 
 # ノートの自動生成項目（メタデータ、URL、手元の画像へのリンク）を更新する。
-tkn-object-storage-catalog notes refresh
+tkn-objstorage-imgcatalog notes refresh
 
 # 手元のハッシュ値とノートの識別子を検査する。
-tkn-object-storage-catalog verify
+tkn-objstorage-imgcatalog verify
 ```
 
 取り込みを繰り返したときの動作は、次のとおりです。
@@ -372,8 +372,8 @@ CLI は、ノートに記録された ID で対応するノートを見つけま
 次は、クラウド側の内容で手元を置き換える例です。
 
 ```shell
-tkn-object-storage-catalog pull photo.webp --overwrite --dry-run
-tkn-object-storage-catalog pull photo.webp --overwrite --yes
+tkn-objstorage-imgcatalog pull photo.webp --overwrite --dry-run
+tkn-objstorage-imgcatalog pull photo.webp --overwrite --yes
 ```
 
 > [!WARNING]
@@ -401,10 +401,10 @@ tkn-object-storage-catalog pull photo.webp --overwrite --yes
 次の順で状態を確認し、復旧します。
 
 ```shell
-tkn-object-storage-catalog verify
-tkn-object-storage-catalog recover --dry-run
-tkn-object-storage-catalog recover
-tkn-object-storage-catalog verify
+tkn-objstorage-imgcatalog verify
+tkn-objstorage-imgcatalog recover --dry-run
+tkn-objstorage-imgcatalog recover
+tkn-objstorage-imgcatalog verify
 ```
 
 `recover` は、公開用画像の書き込みまで終わっていて、カタログとノートの更新だけが残っている処理を完了させます。
@@ -433,7 +433,7 @@ tkn-object-storage-catalog verify
 | 整合性を検査する | `verify [--remote]` | `--remote` のときクラウドから内容を読み取り | なし |
 | 中断した処理を完了させる | `recover` | なし | カタログ、ノート、実行記録 |
 
-各コマンドの引数とオプションは、`tkn-object-storage-catalog <command> --help` で確認できます。
+各コマンドの引数とオプションは、`tkn-objstorage-imgcatalog <command> --help` で確認できます。
 
 ### 4.1. 共通の動作
 
@@ -443,9 +443,9 @@ source が1つなら自動で選びます。複数ある場合、データを扱
 `--source <id>` を指定します。アセットの省略は、その source 内の全アセットを意味します。
 
 ```shell
-tkn-object-storage-catalog import --source my-obj-storage-1 "C:\path\to\photo.png"
-tkn-object-storage-catalog push --source my-obj-storage-1 --dry-run
-tkn-object-storage-catalog status --source my-obj-storage-1
+tkn-objstorage-imgcatalog import --source my-obj-storage-1 "C:\path\to\photo.png"
+tkn-objstorage-imgcatalog push --source my-obj-storage-1 --dry-run
+tkn-objstorage-imgcatalog status --source my-obj-storage-1
 ```
 
 `--source` はサブコマンドの前後どちらにも書けます。
@@ -578,13 +578,13 @@ sources:
       enabled: false
 ```
 
-保存先を省略した場合、`my-obj-storage-1` は `~/.tkn/object_storage_catalog/data/my-obj-storage-1/`、
-`my-obj-storage-2` は `~/.tkn/object_storage_catalog/data/my-obj-storage-2/` に保存されます。
-同期記録とログも `~/.tkn/object_storage_catalog/state/<source-id>/` に分かれます。
+保存先を省略した場合、`my-obj-storage-1` は `~/.tkn/objstorage-imgcatalog/data/my-obj-storage-1/`、
+`my-obj-storage-2` は `~/.tkn/objstorage-imgcatalog/data/my-obj-storage-2/` に保存されます。
+同期記録とログも `~/.tkn/objstorage-imgcatalog/state/<source-id>/` に分かれます。
 
 ```shell
-tkn-object-storage-catalog import --source my-obj-storage-2 "C:\path\to\photo.png"
-tkn-object-storage-catalog pull --source my-obj-storage-2 --dry-run
+tkn-objstorage-imgcatalog import --source my-obj-storage-2 "C:\path\to\photo.png"
+tkn-objstorage-imgcatalog pull --source my-obj-storage-2 --dry-run
 ```
 
 設定ファイルを重ねる場合、後のファイルの `sources` は前の一覧全体を置き換えます。
@@ -608,7 +608,7 @@ tkn-object-storage-catalog pull --source my-obj-storage-2 --dry-run
 
 ## 6. 保存構造
 
-既定では、`~/.tkn/object_storage_catalog/` の下に次のように保存します。
+既定では、`~/.tkn/objstorage-imgcatalog/` の下に次のように保存します。
 保存先は source ごとの `data_root`、`state_root`、`notes_root` で変更できます。
 
 | 保存先 | 保存するもの | 失った場合 |
@@ -643,26 +643,33 @@ tkn-object-storage-catalog pull --source my-obj-storage-2 --dry-run
 
 ## 8. 更新と保守
 
+0.4.1 でコマンド名を `tkn-object-storage-catalog` から `tkn-objstorage-imgcatalog` へ変更しました。
+0.4.2 で既定の設定・データ保存先を `~/.tkn/objstorage-imgcatalog/` に変更しました。
+旧 `~/.tkn/object_storage_catalog/` を使っていた場合、フォルダーを移行し、設定やノートの絶対パスも更新します。ノートの管理マーカーと画像・ノートの ID は維持します。
+同期履歴の識別にはデータ保存先が含まれるため、移行時にはその対応も確認してください。
+
 ソース、同梱ファイル、依存パッケージを更新した後は、再インストールします。
 
 ```shell
-cd "C:\path\to\tkn_object_storage_catalog"
+cd "C:\path\to\tkn_objstorage_imgcatalog"
 uv tool install . --reinstall
-tkn-object-storage-catalog --version
+tkn-objstorage-imgcatalog --version
 ```
 
 リポジトリのフォルダーを移動または改名した後も、新しい場所で同じ再インストールを実行します。
 uv が記録しているソースのパスが更新されます。
-コマンド名と、`~/.tkn/object_storage_catalog/` の保存領域は変わりません。
+コマンド名と、`~/.tkn/objstorage-imgcatalog/` の保存領域は変わりません。
 
-旧名でインストールしていた場合は、新名でインストールした後に `uv tool uninstall tkn-azure-blob-note` で旧コマンドを削除できます。旧コマンドの別名は提供しません。ユーザーデータはこの操作では削除されません。
+旧 `tkn-object-storage-catalog` をインストールしていた場合は、新名でインストール・起動確認した後に `uv tool uninstall tkn-object-storage-catalog` で旧コマンドを削除できます。
+
+さらに旧名の Azure 版をインストールしていた場合は、新名でインストールした後に `uv tool uninstall tkn-azure-blob-note` で旧コマンドを削除できます。旧コマンドの別名は提供しません。ユーザーデータはこの操作では削除されません。
 
 変更履歴は [CHANGELOG.md](CHANGELOG.md) を参照します。
 
 ## 9. 開発と検証
 
 ```shell
-cd "C:\path\to\tkn_object_storage_catalog"
+cd "C:\path\to\tkn_objstorage_imgcatalog"
 uv sync --locked
 uv run pytest
 uv run ruff check .

@@ -17,6 +17,7 @@ from .config import Config, resource
 from .errors import AppError, ConflictError
 from .io import atomic_bytes, sha256, within
 
+# Keep the persisted markers stable across CLI/package renames.
 BEGIN = "<!-- object-storage-catalog:begin -->"
 END = "<!-- object-storage-catalog:end -->"
 LEGACY_BEGIN = "<!-- azure-blob-note:begin -->"

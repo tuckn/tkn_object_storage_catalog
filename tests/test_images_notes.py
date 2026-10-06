@@ -3,13 +3,13 @@ from __future__ import annotations
 import pytest
 from PIL import Image
 
-from tkn_object_storage_catalog.catalog import Catalog, Operation
-from tkn_object_storage_catalog.config import load_config
-from tkn_object_storage_catalog.errors import AppError, ConflictError
-from tkn_object_storage_catalog.images import build_images, import_images
-from tkn_object_storage_catalog.io import sha256
-from tkn_object_storage_catalog.notes import find_note, refresh_notes
-from tkn_object_storage_catalog.sync import verify
+from tkn_objstorage_imgcatalog.catalog import Catalog, Operation
+from tkn_objstorage_imgcatalog.config import load_config
+from tkn_objstorage_imgcatalog.errors import AppError, ConflictError
+from tkn_objstorage_imgcatalog.images import build_images, import_images
+from tkn_objstorage_imgcatalog.io import sha256
+from tkn_objstorage_imgcatalog.notes import find_note, refresh_notes
+from tkn_objstorage_imgcatalog.sync import verify
 
 
 def snapshot(root):

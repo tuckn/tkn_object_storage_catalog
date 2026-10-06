@@ -209,7 +209,7 @@ class Operation(AbstractContextManager["Operation"]):
             "schema_version": SCHEMA_VERSION,
             "run_id": self.run_id,
             "command": command,
-            "agent": {"name": "tkn-object-storage-catalog", "version": __version__},
+            "agent": {"name": "tkn-objstorage-imgcatalog", "version": __version__},
             "started_at": now(),
             "status": "running",
             "events": [],
@@ -234,7 +234,7 @@ class Operation(AbstractContextManager["Operation"]):
                         "%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%dT%H:%M:%S%z"
                     )
                 )
-                logging.getLogger("tkn_object_storage_catalog").addHandler(self.handler)
+                logging.getLogger("tkn_objstorage_imgcatalog").addHandler(self.handler)
                 self.flush()
             except BaseException:
                 self.lock.release()
@@ -259,7 +259,7 @@ class Operation(AbstractContextManager["Operation"]):
             self.flush()
         finally:
             if self.handler:
-                logging.getLogger("tkn_object_storage_catalog").removeHandler(self.handler)
+                logging.getLogger("tkn_objstorage_imgcatalog").removeHandler(self.handler)
                 self.handler.close()
             if self.lock:
                 self.lock.release()

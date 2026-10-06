@@ -8,15 +8,15 @@ import pytest
 from azure.core import MatchConditions
 from PIL import Image
 
-from tkn_object_storage_catalog.azure import AzureBlobs
-from tkn_object_storage_catalog.catalog import Catalog, Operation
-from tkn_object_storage_catalog.cli import main
-from tkn_object_storage_catalog.config import load_config
-from tkn_object_storage_catalog.errors import AppError, ConflictError
-from tkn_object_storage_catalog.images import import_images
-from tkn_object_storage_catalog.io import atomic_bytes
-from tkn_object_storage_catalog.notes import find_note
-from tkn_object_storage_catalog.sync import push, status
+from tkn_objstorage_imgcatalog.azure import AzureBlobs
+from tkn_objstorage_imgcatalog.catalog import Catalog, Operation
+from tkn_objstorage_imgcatalog.cli import main
+from tkn_objstorage_imgcatalog.config import load_config
+from tkn_objstorage_imgcatalog.errors import AppError, ConflictError
+from tkn_objstorage_imgcatalog.images import import_images
+from tkn_objstorage_imgcatalog.io import atomic_bytes
+from tkn_objstorage_imgcatalog.notes import find_note
+from tkn_objstorage_imgcatalog.sync import push, status
 
 
 @pytest.mark.parametrize("listed_etag", ["0x8ABC", '"0x8ABC"'])

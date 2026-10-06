@@ -10,14 +10,14 @@ import pytest
 from botocore.exceptions import ClientError, NoCredentialsError
 from ruamel.yaml import YAML
 
-from tkn_object_storage_catalog import cli
-from tkn_object_storage_catalog.catalog import Catalog, Operation, make_record
-from tkn_object_storage_catalog.config import load_config
-from tkn_object_storage_catalog.errors import AppError
-from tkn_object_storage_catalog.io import fingerprint
-from tkn_object_storage_catalog.notes import find_note, refresh_notes, split_note, urls
-from tkn_object_storage_catalog.storage import open_store
-from tkn_object_storage_catalog.sync import pull, push, verify
+from tkn_objstorage_imgcatalog import cli
+from tkn_objstorage_imgcatalog.catalog import Catalog, Operation, make_record
+from tkn_objstorage_imgcatalog.config import load_config
+from tkn_objstorage_imgcatalog.errors import AppError
+from tkn_objstorage_imgcatalog.io import fingerprint
+from tkn_objstorage_imgcatalog.notes import find_note, refresh_notes, split_note, urls
+from tkn_objstorage_imgcatalog.storage import open_store
+from tkn_objstorage_imgcatalog.sync import pull, push, verify
 
 R2_ENDPOINT = "https://" + "a" * 32 + ".r2.cloudflarestorage.com"
 
@@ -63,7 +63,7 @@ def test_mixed_providers_have_isolated_targets_and_roots(tmp_path):
     for provider in ("azure", "s3", "r2"):
         selected = config.select_source(provider)
         assert selected.provider == provider
-        assert selected.data_root == tmp_path / "home/.tkn/object_storage_catalog/data" / provider
+        assert selected.data_root == tmp_path / "home/.tkn/objstorage-imgcatalog/data" / provider
         keys.append(Catalog(selected).target_key())
     assert len(set(keys)) == 3
     assert not (tmp_path / "home").exists()
@@ -122,8 +122,8 @@ def test_legacy_config_discovery_keeps_data_and_prevents_shadowing(tmp_path, cap
     assert cli.main(["config", "init"]) == 2
     assert "existing Azure config" in json.loads(capsys.readouterr().out)["error"]
     assert path.read_bytes() == before
-    assert not (tmp_path / "home/.tkn/object_storage_catalog").exists()
-    write_config(tmp_path / "home/.tkn/object_storage_catalog", {"new": settings("s3")})
+    assert not (tmp_path / "home/.tkn/objstorage-imgcatalog").exists()
+    write_config(tmp_path / "home/.tkn/objstorage-imgcatalog", {"new": settings("s3")})
     assert load_config().source_id == "new"
 
 
@@ -145,7 +145,7 @@ def test_old_azure_baseline_fingerprint_and_asset_ids_are_stable(cfg, asset):
 
 
 def test_invalid_lower_provider_layer_cannot_be_hidden(tmp_path):
-    old = tmp_path / "home/.tkn/object_storage_catalog"
+    old = tmp_path / "home/.tkn/objstorage-imgcatalog"
     invalid = settings("r2")
     invalid["s3"]["region"] = "ap-northeast-1"
     write_config(old, {"bad": invalid})
@@ -253,8 +253,8 @@ def test_s3_url_includes_prefix_and_region(tmp_path):
 
 @pytest.mark.parametrize("provider", ["azure", "s3", "r2"])
 def test_factory_selects_the_matching_adapter(tmp_path, monkeypatch, provider):
-    import tkn_object_storage_catalog.azure as azure
-    import tkn_object_storage_catalog.s3 as s3
+    import tkn_objstorage_imgcatalog.azure as azure
+    import tkn_objstorage_imgcatalog.s3 as s3
 
     config = load_config(write_config(tmp_path, {"images": settings(provider)}))
     factory = Mock()

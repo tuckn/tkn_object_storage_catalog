@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from tkn_object_storage_catalog.cli import main
-from tkn_object_storage_catalog.config import init_config, load_config, resource
-from tkn_object_storage_catalog.errors import AppError, ConflictError
+from tkn_objstorage_imgcatalog.cli import main
+from tkn_objstorage_imgcatalog.config import init_config, load_config, resource
+from tkn_objstorage_imgcatalog.errors import AppError, ConflictError
 
 
 def write(path, text):
@@ -104,13 +104,13 @@ def test_config_and_help_readonly(tmp_path, monkeypatch, capsys):
 
 def test_installed_entrypoint_outside_repository(tmp_path):
     completed = subprocess.run(
-        [sys.executable, "-m", "tkn_object_storage_catalog", "--version"],
+        [sys.executable, "-m", "tkn_objstorage_imgcatalog", "--version"],
         cwd=tmp_path,
         capture_output=True,
         text=True,
     )
     assert completed.returncode == 0
-    assert "tkn-object-storage-catalog 0.4.0" in completed.stdout
+    assert "tkn-objstorage-imgcatalog 0.4.2" in completed.stdout
 
 
 def test_cli_import_json_and_quiet(cfg, source, capsys):

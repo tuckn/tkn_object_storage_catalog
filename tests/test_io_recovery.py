@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from tkn_object_storage_catalog.catalog import Catalog, Operation
-from tkn_object_storage_catalog.errors import AppError, ConflictError
-from tkn_object_storage_catalog.io import atomic_bytes, copy_verified, safe_relative
-from tkn_object_storage_catalog.recovery import recover
-from tkn_object_storage_catalog.sync import verify
+from tkn_objstorage_imgcatalog.catalog import Catalog, Operation
+from tkn_objstorage_imgcatalog.errors import AppError, ConflictError
+from tkn_objstorage_imgcatalog.io import atomic_bytes, copy_verified, safe_relative
+from tkn_objstorage_imgcatalog.recovery import recover
+from tkn_objstorage_imgcatalog.sync import verify
 
 
 @pytest.mark.parametrize(
@@ -31,7 +31,7 @@ def test_portable_path_protection(name):
 
 
 def test_atomic_replace_failure_preserves_previous_file(tmp_path, monkeypatch):
-    import tkn_object_storage_catalog.io as io
+    import tkn_objstorage_imgcatalog.io as io
 
     path = tmp_path / "file"
     path.write_bytes(b"previous")
@@ -57,7 +57,7 @@ def test_copy_verifies_collision(tmp_path):
 
 
 def test_prepared_commit_recovery(cfg, source, monkeypatch):
-    import tkn_object_storage_catalog.images as images
+    import tkn_objstorage_imgcatalog.images as images
 
     original_save = Catalog.save
 

@@ -2,4 +2,4 @@
 
 from importlib.metadata import version
 
-__version__ = version("tkn-object-storage-catalog")
+__version__ = version("tkn-objstorage-imgcatalog")

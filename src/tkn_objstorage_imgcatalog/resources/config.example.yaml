@@ -9,9 +9,9 @@ integration_tests: {}
 # One source manages one Azure container, AWS S3 bucket, or Cloudflare R2 bucket.
 sources:
   my-obj-storage-1:
-    # null uses ~/.tkn/object_storage_catalog/data/<source-id>
+    # null uses ~/.tkn/objstorage-imgcatalog/data/<source-id>
     data_root: null
-    # null uses ~/.tkn/object_storage_catalog/state/<source-id>
+    # null uses ~/.tkn/objstorage-imgcatalog/state/<source-id>
     state_root: null
     # null uses <data_root>/notes; or choose a directory inside your Vault.
     notes_root: null

@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from tkn_object_storage_catalog.catalog import Catalog
-from tkn_object_storage_catalog.errors import AppError
+from tkn_objstorage_imgcatalog.catalog import Catalog
+from tkn_objstorage_imgcatalog.errors import AppError
 
 
 @pytest.mark.parametrize(

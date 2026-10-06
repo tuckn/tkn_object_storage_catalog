@@ -7,12 +7,12 @@ from pathlib import Path
 import pytest
 from ruamel.yaml import YAML
 
-import tkn_object_storage_catalog.cli as cli
-from tkn_object_storage_catalog.catalog import Catalog, Operation
-from tkn_object_storage_catalog.config import load_config, resource
-from tkn_object_storage_catalog.errors import AppError
-from tkn_object_storage_catalog.images import import_images
-from tkn_object_storage_catalog.sync import push
+import tkn_objstorage_imgcatalog.cli as cli
+from tkn_objstorage_imgcatalog.catalog import Catalog, Operation
+from tkn_objstorage_imgcatalog.config import load_config, resource
+from tkn_objstorage_imgcatalog.errors import AppError
+from tkn_objstorage_imgcatalog.images import import_images
+from tkn_objstorage_imgcatalog.sync import push
 
 
 @pytest.fixture(autouse=True)
@@ -59,8 +59,8 @@ def snapshot(root):
 def test_named_defaults_and_readonly_report(tmp_path):
     config = load_config()
     assert config.source_id == "my-obj-storage-1"
-    assert config.data_root == tmp_path / "home/.tkn/object_storage_catalog/data/my-obj-storage-1"
-    assert config.state_root == tmp_path / "home/.tkn/object_storage_catalog/state/my-obj-storage-1"
+    assert config.data_root == tmp_path / "home/.tkn/objstorage-imgcatalog/data/my-obj-storage-1"
+    assert config.state_root == tmp_path / "home/.tkn/objstorage-imgcatalog/state/my-obj-storage-1"
     assert config.notes_root == config.data_root / "notes"
     report = config.report()
     assert report["config"]["schema_version"] == "3.1.0"

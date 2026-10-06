@@ -1,6 +1,6 @@
 # 設定とデータの取り決め
 
-この文書は、`tkn-object-storage-catalog` の設定、ファイルの形式、識別子、同期の判定規則をまとめたリファレンスです。
+この文書は、`tkn-objstorage-imgcatalog` の設定、ファイルの形式、識別子、同期の判定規則をまとめたリファレンスです。
 導入と日常の使い方は [README](../../README.md) を参照します。
 
 ## 1. 設定
@@ -20,7 +20,7 @@
 設定は次の順に読み込み、後のものが前のものを上書きします。
 
 1. パッケージに同梱した既定値
-2. `~/.tkn/object_storage_catalog/config.yaml`（存在しない場合だけ `~/.tkn/azure_blob_note/config.yaml`）
+2. `~/.tkn/objstorage-imgcatalog/config.yaml`（存在しない場合だけ `~/.tkn/azure_blob_note/config.yaml`）
 3. コマンドを実行したフォルダーの `./.tkn/config.yaml`
 4. `--config FILE` で明示したファイル
 5. 対応する CLI オプション（`--data-root`、`--state-root`、`--notes-root`、`import` の `--convert` / `--no-convert`）
@@ -49,7 +49,7 @@ Azure はアカウント URL とコンテナー、S3/R2 は provider・エンド
 AWS のリージョンや認証プロファイルだけを変えても別のバケットとは扱いません。
 `.env` ファイルは読み込みません。
 
-有効な設定値と、各値の由来は `tkn-object-storage-catalog config list` で確認できます。
+有効な設定値と、各値の由来は `tkn-objstorage-imgcatalog config list` で確認できます。
 
 ### 1.3. パスの解決
 
@@ -68,8 +68,8 @@ AWS のリージョンや認証プロファイルだけを変えても別のバ�
 | --- | --- | --- |
 | `schema_version` | `"3.1.0"` | 設定ファイルごとに必須です。 |
 | `sources` | `my-obj-storage-1` の1 source | 利用者が付けた source ID をキーとする設定一覧です。ひな形には2つ目の source のコメント例もあります。 |
-| `data_root` | `~/.tkn/object_storage_catalog/data/<source-id>` | 画像とノートを保存する領域です。 |
-| `state_root` | `~/.tkn/object_storage_catalog/state/<source-id>` | 同期の基準、実行記録、ログを保存する領域です。 |
+| `data_root` | `~/.tkn/objstorage-imgcatalog/data/<source-id>` | 画像とノートを保存する領域です。 |
+| `state_root` | `~/.tkn/objstorage-imgcatalog/state/<source-id>` | 同期の基準、実行記録、ログを保存する領域です。 |
 | `notes_root` | `null` | 画像ノートの保存先です。`null` の場合は `<data_root>/notes` になります。 |
 | `provider` | `azure` | `azure`、`s3`、`r2`。選んだ接続設定だけを使用します。 |
 | `s3.bucket` | `null` | S3/R2 の既存の汎用バケット名。接続する場合に必須です。 |
