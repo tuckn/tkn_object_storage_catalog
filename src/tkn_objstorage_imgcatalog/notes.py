@@ -143,11 +143,7 @@ def render_note(
         "objectKey": "/".join(x for x in (config.storage["prefix"], record["relative_path"]) if x),
         "objectUrl": blob,
         "url": url,
-        "cover": (
-            "releases/" + record["relative_path"]
-            if config.notes_root.is_relative_to(config.data_root)
-            else image.as_uri()
-        ),
+        "cover": "releases/" + record["relative_path"],
         "updated": record["updated_at"],
     }
     for field, key in (
@@ -163,10 +159,7 @@ def render_note(
     for key, value in managed.items():
         if data.get(key) != value or key not in data:
             data[key] = value
-    if config.notes_root.is_relative_to(config.data_root):
-        image_link = quote(os.path.relpath(image, path.parent).replace("\\", "/"), safe="/.")
-    else:
-        image_link = image.as_uri()
+    image_link = quote(os.path.relpath(image, path.parent).replace("\\", "/"), safe="/.")
     content = Template(resource("note.md")).substitute(
         title=str(data["title"]),
         image_link=image_link,

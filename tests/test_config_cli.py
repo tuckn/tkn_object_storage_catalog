@@ -41,7 +41,7 @@ def test_five_layers_and_origin(tmp_path):
     [
         "conversion: {}",
         "schema_version: 1\n",
-        'schema_version: "4.0.0"\n',
+        'schema_version: "5.0.0"\n',
         'schema_version: "1.1.0"\n',
         'schema_version: "1.0"\n',
         'schema_version: "1.0.0"\nconversion:\n  mystery: 1\n',
@@ -67,7 +67,7 @@ def test_init_protection_and_backup(tmp_path):
     assert not path.exists()
     assert init_config(path)["status"] == "created"
     assert init_config(path)["status"] == "unchanged"
-    assert 'schema_version: "3.2.0"' in path.read_text()
+    assert 'schema_version: "4.0.0"' in path.read_text()
     path.write_text("# Edited\n" + path.read_text(), encoding="utf-8")
     with pytest.raises(ConflictError):
         init_config(path)
@@ -92,7 +92,7 @@ def test_config_and_help_readonly(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     assert main(["config", "list", "--json"]) == 0
     result = json.loads(capsys.readouterr().out)
-    assert result["config"]["sources"]["my-obj-storage-1"]["notes_root"].endswith("notes")
+    assert "notes_root" not in result["config"]["sources"]["my-obj-storage-1"]
     assert not (tmp_path / "home").exists()
     for option in ("--help", "--version"):
         with pytest.raises(SystemExit) as stop:
@@ -110,7 +110,7 @@ def test_installed_entrypoint_outside_repository(tmp_path):
         text=True,
     )
     assert completed.returncode == 0
-    assert "tkn-objstorage-imgcatalog 0.7.0" in completed.stdout
+    assert "tkn-objstorage-imgcatalog 0.8.0" in completed.stdout
 
 
 def test_cli_import_json_and_quiet(cfg, source, capsys):
@@ -133,3 +133,46 @@ def test_cli_import_json_and_quiet(cfg, source, capsys):
 
 def test_resource_available():
     assert "$title" in resource("note.md")
+
+
+@pytest.mark.parametrize("version", ["1.0.0", "2.0.0", "3.2.0", "4.0.0"])
+@pytest.mark.parametrize("notes", [None, "data/notes", "external-vault"])
+def test_removed_notes_setting_rejected_without_writes(tmp_path, version, notes):
+    settings = {"data_root": "data", "notes_root": notes}
+    value = {"schema_version": version}
+    value.update(settings if version == "1.0.0" else {"sources": {"images": settings}})
+    path = tmp_path / "config.yaml"
+    path.write_text(json.dumps(value), encoding="utf-8")
+    before = path.read_bytes()
+    with pytest.raises(AppError, match="notes_root is no longer supported"):
+        load_config(path, home=tmp_path / "empty", cwd=tmp_path)
+    assert path.read_bytes() == before
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_removed_notes_override_rejected(tmp_path):
+    with pytest.raises(AppError, match="notes_root is no longer supported"):
+        load_config(overrides={"notes_root": None}, home=tmp_path / "empty", cwd=tmp_path)
+    assert not list(tmp_path.iterdir())
+
+
+def test_removed_notes_cli_option_rejected_before_config(monkeypatch, capsys):
+    import tkn_objstorage_imgcatalog.cli as cli
+
+    monkeypatch.setattr(cli, "load_config", lambda *a, **k: pytest.fail("Config read"))
+    with pytest.raises(SystemExit) as stop:
+        main(["config", "list", "--notes-root", "external-vault"])
+    assert stop.value.code == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_notes_follow_resolved_data_root_override(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        json.dumps({"schema_version": "4.0.0", "sources": {"images": {"data_root": "old"}}}),
+        encoding="utf-8",
+    )
+    cfg = load_config(path, {"data_root": "new-vault"}, home=tmp_path / "empty", cwd=tmp_path)
+    assert cfg.notes_root == tmp_path / "new-vault" / "notes"
+    assert "notes_root" not in cfg.source_values
+    assert not cfg.data_root.exists()

@@ -286,7 +286,7 @@ class LiveRun:
         root.mkdir()
         source = {
             "provider": self.target["provider"],
-            **{f"{name}_root": str(root / name) for name in ("data", "state", "notes")},
+            **{f"{name}_root": str(root / name) for name in ("data", "state")},
             "delivery": {"url_base": None, "cache_control": CACHE},
             "conversion": {"enabled": True, "lossless": True},
         }
@@ -307,7 +307,13 @@ class LiveRun:
             }
         path = root / "config.yaml"
         # JSON is a YAML subset; this file contains only non-secret test settings.
-        write_json(path, {"schema_version": "3.0.0", "sources": {"integration": source}})
+        write_json(
+            path,
+            {
+                "schema_version": configuration.CONFIG_SCHEMA_VERSION,
+                "sources": {"integration": source},
+            },
+        )
         config = configuration.load_config(
             path, home=self.work_root / "empty-user", cwd=self.work_root
         )

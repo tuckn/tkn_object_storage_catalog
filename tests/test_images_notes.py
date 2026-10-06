@@ -137,3 +137,41 @@ def test_unknown_existing_note_protected(cfg, source):
         with Operation(cfg, "import", False) as operation:
             import_images(cfg, [source], operation)
     assert note.read_text() == "# My unrelated note"
+
+
+@pytest.mark.parametrize("move_vault", [False, True])
+def test_vault_relative_preview_survives_note_and_vault_moves(cfg, source, tmp_path, move_vault):
+    from urllib.parse import unquote
+
+    from tkn_objstorage_imgcatalog.notes import split_note
+
+    with Operation(cfg, "import", False) as operation:
+        import_images(cfg, [source], operation, name="goods/生成 画像.png")
+    record = NoteStore(cfg).assets()[0]
+    note = find_note(cfg, record)
+    moved_note = cfg.notes_root / "organized" / "nested" / "renamed.md"
+    moved_note.parent.mkdir(parents=True)
+    note.rename(moved_note)
+    if move_vault:
+        destination = tmp_path / "moved-vault"
+        cfg.data_root.rename(destination)
+        cfg = load_config(
+            home=tmp_path / "empty",
+            cwd=tmp_path,
+            overrides={"data_root": str(destination), "state_root": str(cfg.state_root)},
+        )
+        moved_note = cfg.notes_root / "organized" / "nested" / "renamed.md"
+    before = snapshot(tmp_path)
+    refresh_notes(cfg, [], dry_run=True)
+    assert snapshot(tmp_path) == before
+    refresh_notes(cfg, [])
+    data, body = split_note(moved_note.read_text(encoding="utf-8"))
+    assert data["cover"] == "releases/goods/生成 画像.webp"
+    assert (cfg.data_root / data["cover"]).is_file()
+    preview = body.split("![Image](", 1)[1].split(")", 1)[0]
+    assert not preview.startswith("file:")
+    assert (moved_note.parent / unquote(preview)).resolve() == cfg.data_root / data["cover"]
+    assert NoteStore(cfg).assets()[0]["asset_id"] == record["asset_id"]
+    assert verify(cfg)[0]["status"] == "valid"
+    assert (cfg.notes_root / "images.base").is_file()
+    assert not (cfg.data_root / ".obsidian").exists()

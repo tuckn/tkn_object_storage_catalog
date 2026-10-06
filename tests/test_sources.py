@@ -63,8 +63,8 @@ def test_named_defaults_and_readonly_report(tmp_path):
     assert config.state_root == tmp_path / "home/.tkn/objstorage-imgcatalog/state/my-obj-storage-1"
     assert config.notes_root == config.data_root / "notes"
     report = config.report()
-    assert report["config"]["schema_version"] == "3.2.0"
-    assert report["effective_schema_version"] == "3.2.0"
+    assert report["config"]["schema_version"] == "4.0.0"
+    assert report["effective_schema_version"] == "4.0.0"
     assert report["selected_source"] == "my-obj-storage-1"
     assert not (tmp_path / "home").exists()
 
@@ -212,9 +212,9 @@ def test_same_container_name_in_different_accounts_is_valid(tmp_path):
     [
         ("data_root", "data_root", False),
         ("state_root", "state_root", True),
-        ("notes_root", "notes_root", False),
-        ("data_root", "notes_root", False),
-        ("notes_root", "state_root", True),
+        ("data_root", "state_root", False),
+        ("state_root", "data_root", True),
+        ("data_root", "data_root", True),
     ],
 )
 def test_sources_cannot_share_or_nest_managed_paths(tmp_path, key, other_key, nested):

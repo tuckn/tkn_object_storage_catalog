@@ -116,7 +116,7 @@ flowchart LR
 **入力画像は移動・削除されず、`staging` に置いた画像も取り込み後に残ります。**
 
 図中のローカルフォルダーは `<data_root>/` 配下です（既定では `~/.tkn/objstorage-imgcatalog/data/<source-id>/`）。
-`notes_root` を指定した場合だけ、ノートはその指定先に保存されます。
+`notes`・`releases`・`originals` などは `data_root` 配下で一体として管理します。ノートの保存先は `<data_root>/notes` に固定されています。
 正常に書き込みを行う場合の流れを示し、競合による停止や `--dry-run` は省略しています。
 
 **取り込み → アップロード：`import` → `push`**
@@ -129,7 +129,7 @@ sequenceDiagram
     participant Notes as notes
     participant Cloud as Object Storage
 
-    Note over Input,Notes: import：引数で指定した画像・フォルダーを取り込む（省略時は staging）
+    Note over Input,Notes: import：指定した source に画像・フォルダーを取り込む（入力パス省略時はその source の staging）
     Input->>Originals: photo.png をコピー → originals/＜sha256＞/photo.png
     Note over Input: 入力画像はそのまま残る
     Originals->>Releases: 原本を WebP に変換 → releases/photo.webp
@@ -233,7 +233,7 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 tkn-objstorage-imgcatalog --version
 ```
 
-`tkn-objstorage-imgcatalog 0.7.0` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-objstorage-imgcatalog 0.8.0` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
 コマンドとオプションの一覧は `tkn-objstorage-imgcatalog --help` で確認できます。
@@ -264,7 +264,7 @@ tkn-objstorage-imgcatalog config list
 **Azure Blob Storage**
 
 ```yaml
-schema_version: "3.2.0"
+schema_version: "4.0.0"
 sources:
   my-obj-storage-1:
     provider: azure
@@ -286,7 +286,7 @@ Azure 上では `azure.auth: managed_identity` も選べます。
 **AWS S3**
 
 ```yaml
-schema_version: "3.2.0"
+schema_version: "4.0.0"
 sources:
   my-obj-storage-1:
     provider: s3
@@ -307,7 +307,7 @@ SSE-KMS を使うバケットでは KMS の権限も必要です。
 **Cloudflare R2**
 
 ```yaml
-schema_version: "3.2.0"
+schema_version: "4.0.0"
 sources:
   my-obj-storage-1:
     provider: r2
@@ -409,13 +409,15 @@ tkn-objstorage-imgcatalog verify --source my-obj-storage-1 --remote
 
 **4. Obsidian でノートを開きます（任意）。**
 
-データ保存領域（既定では `~/.tkn/objstorage-imgcatalog/data/my-obj-storage-1`）を Obsidian の Vault として開き、`notes` フォルダーのノートを開きます。
+**`data_root` そのものを Obsidian の Vault ルートとして開きます。** 既定では `~/.tkn/objstorage-imgcatalog/data/my-obj-storage-1` です。その中の `notes` フォルダーからノートを開きます。
+
+Frontmatter の `cover: releases/...` は Vault ルートを基準にしています。`notes` だけや `data_root` の親フォルダーを Vault として開くと、この参照先がずれます。`.obsidian` は Obsidian が設定保存用に管理するフォルダーで、CLI は作成しません。
 既定の配置では、ノートと手元の画像が同じ Vault に入るため、ノート内に画像が表示されます。
 `description`、`tags`、`nouns`、`domains`、`projects` と本文を自由に編集します。
 
 `tkn-objstorage-imgcatalog notes refresh --source my-obj-storage-1` を実行すると、ギャラリー表示用の `notes/images.base`（Obsidian Bases のビュー）が、存在しない場合に作成されます。
 
-既存の Vault に組み込む方法は「[5.2. 既存の Vault にノートを置く](#52-既存の-vault-にノートを置く)」で説明します。
+Vault と保存先の指定方法は「[5.2. Obsidian の Vault ルートと保存構成](#52-obsidian-の-vault-ルートと保存構成)」で説明します。
 
 ### 3.2. 日常の利用
 
@@ -455,7 +457,7 @@ tkn-objstorage-imgcatalog verify --source my-obj-storage-1
 `--name photos/another.png` のように指定すると、入力が1枚のときに限り、公開用画像の相対パスを変更できます。
 WebP へ変換される場合、拡張子は `.webp` に置き換わります。
 
-画像ノートは、`notes_root` の中であれば名前の変更や移動ができます。
+画像ノートは、`<data_root>/notes` の中であれば名前の変更や移動ができます。
 CLI は、ノートに記録された ID で対応するノートを見つけます。
 
 ### 3.3. 手元とクラウド の内容が食い違ったとき
@@ -519,15 +521,15 @@ tkn-objstorage-imgcatalog verify --source my-obj-storage-1
 | --- | --- | --- | --- |
 | 設定ファイルを作成する | `config init [--path FILE] [--force]` | なし | 設定ファイル。`--force` は、編集済みのファイルをバックアップしてから置き換えます。 |
 | 有効な設定を確認する | `config list [--json]` | なし | なし |
-| 画像を取り込む | `import [PATH ...] [--name PATH] [--no-convert]` | なし | 原本、公開用画像、ノート、実行記録 |
-| 公開用画像を作り直す | `build [ASSET ...]` | なし | 公開用画像、ノート、実行記録 |
-| アップロードする | `push [ASSET ...] [--overwrite] [--yes]` | クラウドの読み取りと書き込み | クラウド上のオブジェクト、同期の基準、ノート、実行記録 |
-| ダウンロードする | `pull [ASSET ...] [--overwrite] [--yes]` | クラウドの読み取り | 公開用画像、同期の基準、ノート、実行記録 |
-| ノートの自動生成項目を更新する | `notes refresh [ASSET ...]` | なし | ノート、実行記録 |
-| 状態を確認する | `status [--remote]` | `--remote` のときクラウドの一覧取得 | なし |
-| 整合性を検査する | `verify [--remote]` | `--remote` のときクラウドから内容を読み取り | なし |
-| 中断した処理を完了させる | `recover` | なし | ノート、実行記録 |
-| 旧保存構造を移行する | `migrate` | なし | ノート、実行記録、移行前の控え。移行済みの旧JSONを削除 |
+| 画像を取り込む | `import --source <id> [PATH ...] [--name PATH] [--no-convert]` | なし | 原本、公開用画像、ノート、実行記録 |
+| 公開用画像を作り直す | `build --source <id> [ASSET ...]` | なし | 公開用画像、ノート、実行記録 |
+| アップロードする | `push --source <id> [ASSET ...] [--overwrite] [--yes]` | クラウドの読み取りと書き込み | クラウド上のオブジェクト、同期の基準、ノート、実行記録 |
+| ダウンロードする | `pull --source <id> [ASSET ...] [--overwrite] [--yes]` | クラウドの読み取り | 公開用画像、同期の基準、ノート、実行記録 |
+| ノートの自動生成項目を更新する | `notes refresh --source <id> [ASSET ...]` | なし | ノート、実行記録 |
+| 状態を確認する | `status --source <id> [--remote]` | `--remote` のときクラウドの一覧取得 | なし |
+| 整合性を検査する | `verify --source <id> [--remote]` | `--remote` のときクラウドから内容を読み取り | なし |
+| 中断した処理を完了させる | `recover --source <id>` | なし | ノート、実行記録 |
+| 旧保存構造を移行する | `migrate --source <id>` | なし | ノート、実行記録、移行前の控え。移行済みの旧JSONを削除 |
 
 各コマンドの引数とオプションは、`tkn-objstorage-imgcatalog <command> --help` で確認できます。
 
@@ -581,7 +583,7 @@ tkn-objstorage-imgcatalog status --source my-obj-storage-1
 
 **保存先を一時的に変えるオプション**
 
-すべてのコマンドで、`--config`、`--data-root`、`--state-root`、`--notes-root` を指定できます。
+すべてのコマンドで、`--config`、`--data-root`、`--state-root` を指定できます。
 これらはサブコマンドの前後どちらにも書けます。
 
 ### 4.2. `status --remote` の結果の読み方
@@ -621,7 +623,6 @@ tkn-objstorage-imgcatalog status --source my-obj-storage-1
 | `azure.auth` | `azure_cli` | 認証方法です。Azure 上で実行する場合は `managed_identity` を選べます。 |
 | `delivery.url_base` | `null` | ノートの `url` に書き込む配信 URL の起点です。未設定では Azure/S3 の API URL を使い、R2 では `null` にします。 |
 | `conversion.enabled` | `true` | JPEG と PNG を WebP に変換するかどうかです。 |
-| `notes_root` | `null` | 画像ノートの保存先です。未設定の場合は `<data_root>/notes` です。 |
 
 非公開の画像では、`delivery.url_base` を設定せず、ノート内の手元の画像へのリンクを使います。
 `delivery.url_base` は URL を組み立てるだけの設定です。
@@ -629,22 +630,24 @@ tkn-objstorage-imgcatalog status --source my-obj-storage-1
 
 すべての設定キー、既定値、設定ファイルの優先順位、相対パスの基準は、[設定とデータの取り決め](docs/reference/contracts.md)にまとめています。
 
-### 5.2. 既存の Vault にノートを置く
+### 5.2. Obsidian の Vault ルートと保存構成
 
-`notes_root` に、既存の Vault 内のフォルダーを指定します。
-次は設定ファイルの抜粋です。
+Obsidian を使う場合は、source の `data_root` を Vault ルートにします。既存の Vault を使う場合も、Vault そのもののパスを指定します。次は設定ファイルの抜粋です。
 
 ```yaml
 sources:
   my-obj-storage-1:
-    notes_root: 'C:\path\to\vault\images'
+    data_root: 'C:\path\to\image-vault'
 ```
 
-この場合、ノートから手元の画像への参照は `file:///` 形式の URI になります。
-Obsidian 上で画像がプレビュー表示されるかどうかは、利用環境に依存します。
-確実にプレビューを表示したい場合は、公開用画像とノートを同じ Vault の中に置きます。
+この例では `image-vault` を Vault として開きます。`notes`、`releases`、`originals`、`staging` はその直下に置き、保存領域を移動するときも `data_root` 全体を一緒に移します。既存の Vault を使う場合は、これらのフォルダーが既存データと衝突しないことを確認してください。複数の source は、それぞれ独立した `data_root` を持ちます。
 
-この CLI は、プラグインのインストール、ジャンクションの作成、添付ファイルの自動複製を行いません。
+- Frontmatter の `cover: releases/...` は Vault ルートからの相対パスです。
+- 本文の画像プレビューは、ノートの場所から公開用画像への相対パスです。
+- ノートの保存先は `<data_root>/notes` に固定です。`notes_root` と `--notes-root` は指定できません。
+- `.obsidian` は Obsidian 側が管理します。Obsidian の利用は任意です。
+
+旧設定に `notes_root` がある場合は、`null` でも設定エラーになります。ノートがすでに `<data_root>/notes` にある場合は、その設定行を削除してください。外部にある場合は先にバックアップを取り、同名ファイルと衝突しないことを確認して、ノートと `images.base` を `<data_root>/notes` に移してから設定行を削除します。その後 `notes refresh --source <id> --dry-run` で確認し、`notes refresh --source <id>` で画像参照を更新します。CLI が設定や既存ノートを自動移動することはありません。
 
 ### 5.3. 複数の接続先を管理する
 
@@ -653,7 +656,7 @@ Obsidian 上で画像がプレビュー表示されるかどうかは、利用�
 `delivery` と `conversion` は source ごとに変えられます。
 
 ```yaml
-schema_version: "3.2.0"
+schema_version: "4.0.0"
 sources:
   my-obj-storage-1:
     provider: azure
@@ -697,7 +700,7 @@ tkn-objstorage-imgcatalog pull --source my-obj-storage-2 --dry-run
 
 旧設定が使われている状態での `config init` は、新しい設定で隠してしまわないように停止します。
 そのまま使う場合は `config list` で確認してください。
-手動で `3.2.0` へ移行する場合は、先に `config list --json` で確認した `data_root`・`state_root`・`notes_root` を明記します。
+手動で `4.0.0` へ移行する場合は、従来の `data_root`・`state_root` を明記します。`notes_root` は削除し、ノートを `<data_root>/notes` に揃えます。手順は「[5.2. Obsidian の Vault ルートと保存構成](#52-obsidian-の-vault-ルートと保存構成)」を参照してください。
 新しいユーザー設定を作成すると、旧ユーザー設定の自動読み込みは終了します。
 
 旧データは「[8. 更新と保守](#8-更新と保守)」の `migrate` で移行します。ノートは `schemaVersion: 3.0.0` となり、旧 `blobName` / `blobUrl` は `objectKey` / `objectUrl` に置き換わります。
@@ -706,18 +709,18 @@ tkn-objstorage-imgcatalog pull --source my-obj-storage-2 --dry-run
 ## 6. 保存構造
 
 既定では、`~/.tkn/objstorage-imgcatalog/` の下に次のように保存します。
-保存先は source ごとの `data_root`、`state_root`、`notes_root` で変更できます。
+保存先は source ごとの `data_root`、`state_root` で変更できます。画像とノートの保存先は `data_root` 配下で一体です。
 
 | 保存先 | 保存するもの | 失った場合 |
 | --- | --- | --- |
 | `config.yaml` | 利用者の設定 | `config init` で作り直し、設定をやり直します。 |
-| `data/<source-id>/staging/` | 取り込み待ちの画像を置く場所（任意）。引数なしの `import` が読み取ります。 | 影響はありません。 |
+| `data/<source-id>/staging/` | 取り込み待ちの画像を置く場所（任意）。入力パスを省略した `import --source <id>` が読み取ります。 | 影響はありません。 |
 | `data/<source-id>/originals/<sha256>/` | 取り込んだ原本。変更されません。 | 再作成できません。`build` で作り直せなくなります。 |
 | `data/<source-id>/releases/` | オブジェクトキーに対応する、現在の公開用画像 | 同期済みであれば `pull` で復元できます。 |
 | `data/<source-id>/notes/` | 画像の管理情報・説明・関連をまとめたノートと Obsidian Bases のビュー | 画像ID・原本との対応・変換条件の指紋・説明・本文を失います。バックアップから復元します。 |
 | `state/<source-id>/` | 同期の基準（`sync`）、実行・復旧記録（`runs`）、ログ（`logs`）、移行前の控え（`migrations`） | 同期基準や中断からの復旧情報を失います。使い捨てのキャッシュではありません。 |
 
-バックアップでは、`data` と `state` の全体、および `notes_root` を外に置いている場合はそのフォルダーを対象にします。
+バックアップでは、各 source の `data_root` と `state_root` の全体を対象にします。
 `originals` は取り込んだ原本だけを保持します。ノートや公開用画像の旧版を含む、独立したバックアップの代わりにはなりません。
 
 ファイルの形式、識別子、同期の判定規則は、[設定とデータの取り決め](docs/reference/contracts.md)で説明します。

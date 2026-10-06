@@ -8,10 +8,11 @@
 ### 1.1. スキーマ バージョン
 
 設定ファイルは、データとは別のスキーマ バージョンを持ちます。
-現在の設定スキーマは `"3.2.0"`、ノートは `"3.0.0"` です。同期・実行記録のデータスキーマは `"1.0.0"` を維持します。
+現在の設定スキーマは `"4.0.0"`、ノートは `"3.0.0"` です。同期・実行記録のデータスキーマは `"1.0.0"` を維持します。
 
 - 各設定ファイルに、引用符で囲んだ `schema_version` が必要です。
-- `3.2.x`、`3.1.x`、`3.0.x` を読み込みます。旧形式の `1.0.x` は `images` source に正規化し、`2.0.x` は既存の source 名を保持します。旧形式の保存先の既定値は従来の `~/.tkn/azure_blob_note/` 配下です。それ以外の版はエラーになります。
+- `4.0.x` を使用します。`notes_root` を含まない `3.2.x`、`3.1.x`、`3.0.x` も読み込みます。旧形式の `1.0.x` は `images` source に正規化し、`2.0.x` は既存の source 名を保持します。旧形式の保存先の既定値は従来の `~/.tkn/azure_blob_note/` 配下です。それ以外の版はエラーになります。
+- `notes_root` は旧形式も含めて廃止しました。`null` でもエラーです。外部ノートをバックアップし `<data_root>/notes` に揃えてから設定行を削除します。
 - 未知のキー、重複した YAML キー、型の誤り、URL に含まれる認証情報やクエリ文字列はエラーになります。
 - 設定の読み込みが、設定ファイルを書き換えることはありません。
 
@@ -23,7 +24,7 @@
 2. `~/.tkn/objstorage-imgcatalog/config.yaml`（存在しない場合だけ `~/.tkn/azure_blob_note/config.yaml`）
 3. コマンドを実行したフォルダーの `./.tkn/config.yaml`
 4. `--config FILE` で明示したファイル
-5. 対応する CLI オプション（`--data-root`、`--state-root`、`--notes-root`、`import` の `--convert` / `--no-convert`）
+5. 対応する CLI オプション（`--data-root`、`--state-root`、`import` の `--convert` / `--no-convert`）
 
 各ファイルは個別に検証します。
 優先順位の低いファイルに誤りがある場合、上書きする側が正しくてもエラーになります。
@@ -57,7 +58,7 @@ AWS のリージョンや認証プロファイルだけを変えても別のバ�
 - 相対パスは、コマンドを実行したフォルダーを基準に解決します。スケジュール実行では絶対パスを推奨します。
 - source ごとの `data_root` と `state_root` は、互いに重ならない別のフォルダーにします。
 - 異なる source のデータ・状態・ノート保存先は、同じフォルダーにも親子のフォルダーにもできません。
-- `notes_root` は、`data_root` 内の `staging`、`originals`、`releases`、旧移行元の `catalog`、`provenance`、および `state_root` と重ねられません。
+- ノートの保存先は `<data_root>/notes` に固定し、画像とノートを一体で扱います。Obsidian では `data_root` を Vault ルートとして開きます。
 
 ### 1.4. 設定キー
 
@@ -66,11 +67,10 @@ AWS のリージョンや認証プロファイルだけを変えても別のバ�
 
 | キー | 既定値 | 意味 |
 | --- | --- | --- |
-| `schema_version` | `"3.2.0"` | 設定ファイルごとに必須です。 |
+| `schema_version` | `"4.0.0"` | 設定ファイルごとに必須です。 |
 | `sources` | `my-obj-storage-1` の1 source | 利用者が付けた source ID をキーとする設定一覧です。ひな形には2つ目の source のコメント例もあります。 |
 | `data_root` | `~/.tkn/objstorage-imgcatalog/data/<source-id>` | 画像とノートを保存する領域です。 |
 | `state_root` | `~/.tkn/objstorage-imgcatalog/state/<source-id>` | 同期の基準、実行記録、ログを保存する領域です。 |
-| `notes_root` | `null` | 画像ノートの保存先です。`null` の場合は `<data_root>/notes` になります。 |
 | `provider` | `azure` | `azure`、`s3`、`r2`。選んだ接続設定だけを使用します。 |
 | `s3.bucket` | `null` | S3/R2 の既存の汎用バケット名。接続する場合に必須です。 |
 | `s3.region` | `null` | S3 は SDK の既定リージョンを使用。R2 は省略または `auto` です。 |
@@ -93,7 +93,7 @@ AWS のリージョンや認証プロファイルだけを変えても別のバ�
 | `conversion.strip_metadata` | `true` | 変換後の画像から EXIF、XMP、ICC のメタデータを除きます。 |
 
 `data_root` と `state_root` の省略または `null` は、source ID ごとの既定値を使います。
-`notes_root: null` は、解決済みの `data_root` の下にある `notes` です。
+ノートは解決済みの `<data_root>/notes` に保存します。設定キー `notes_root` と CLI の `--notes-root` は使用できません。
 旧形式から手動で書き直す際、既存のデータを使い続ける場合は従来の保存先を明示します。
 設定の読み込みは、データの移動や設定ファイルの書き換えを行いません。
 
@@ -186,7 +186,7 @@ API の根拠は [Cloudflare の S3 互換性](https://developers.cloudflare.com
 
 ### 3.1. ノートと原本
 
-ノートの Frontmatter を、画像の管理情報の唯一の保存先とします。CLI は `notes_root` 内の Markdown を走査し、アセットID・ノートID・公開用画像のパスが重複していないか、必須項目の型やパスが正しいかを検証します。画像管理項目を持たない通常のノートは管理対象にしません。
+ノートの Frontmatter を、画像の管理情報の唯一の保存先とします。CLI は `<data_root>/notes` 内の Markdown を走査し、アセットID・ノートID・公開用画像のパスが重複していないか、必須項目の型やパスが正しいかを検証します。画像管理項目を持たない通常のノートは管理対象にしません。
 `catalog/<asset_id>.json` は使用しません。既存のJSONと schemaVersion 1.0.0 / 2.0.0 のノートは `migrate` で移行します。移行せず通常のコマンドを実行した場合は、移行方法を表示して停止します。
 
 Frontmatter にはID、公開用画像と原本の相対パス、ハッシュ、サイズ、作成・更新・生成日時、変換条件の指紋を保持します。ノート自身の場所は走査時のパスから求めるため、Frontmatter に固定しません。日時はUTCオフセット付きの文字列です。
@@ -223,8 +223,9 @@ SHA-256 はバイト列を識別し、アセットIDは管理対象の画像を�
 - ノートの `schemaVersion` に対応していない。
 - ブロックの開始と終了のコメントが壊れている。
 
-`notes_root` の中で名前を変更または移動したノートは、ID で見つけます。
-`notes_root` の外へ移動する場合は、設定を変更するか、ノートを戻す必要があります。
+`<data_root>/notes` の中で名前を変更または移動したノートは、ID で見つけます。
+このフォルダーの外へ移動したノートは管理対象外になるため、元に戻す必要があります。
+`cover` は Vault ルート（`data_root`）からの `releases/...`、本文の画像プレビューはノートからの相対パスです。`.obsidian` は Obsidian 側が管理し、CLI は作成しません。
 
 ### 3.4. `syncStatus` と `sourceAvailable`
 
@@ -314,7 +315,7 @@ RDF 文書や、汎用のグラフ索引ではありません。
 
 ### 5.4. バックアップ
 
-- 各 source の `data_root` と `state_root` の全体、および外部に置いた `notes_root` をバックアップします。
+- 各 source の `data_root` と `state_root` の全体をバックアップします。
 - `originals` は、ノートや公開用画像の旧版を含む独立したバックアップの代わりにはなりません。
 - 削除や保存期間の管理は自動化していません。
 - このツールは、生成 AI のサービスを呼び出しません。

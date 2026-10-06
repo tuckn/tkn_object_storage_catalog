@@ -1,6 +1,6 @@
 # Merge order: defaults, user, CWD, --config, CLI options.
 # A sources mapping replaces the preceding layer's entire sources mapping.
-schema_version: "3.2.0"
+schema_version: "4.0.0"
 # Optional live-test targets; not ordinary sources. Never put credentials here.
 # A mapping in a later config layer replaces all preceding integration_tests.
 # See docs/testing/live-storage.md for the full Azure/R2/S3 setup.
@@ -10,11 +10,10 @@ integration_tests: {}
 sources:
   my-obj-storage-1:
     # null uses ~/.tkn/objstorage-imgcatalog/data/<source-id>
+    # Open this directory as the Obsidian Vault root; notes stay in <data_root>/notes.
     data_root: null
     # null uses ~/.tkn/objstorage-imgcatalog/state/<source-id>
     state_root: null
-    # null uses <data_root>/notes; or choose a directory inside your Vault.
-    notes_root: null
     provider: azure # azure | s3 | r2
     azure:
       account_url: null
@@ -49,7 +48,6 @@ sources:
   # my-obj-storage-2:
   #   data_root: null
   #   state_root: null
-  #   notes_root: null
   #   provider: s3
   #   s3:
   #     bucket: example-images

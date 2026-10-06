@@ -15,7 +15,7 @@ from .errors import AppError, ConflictError
 from .io import atomic_bytes, check_schema, now, safe_relative, sha256
 
 APPLICATION_ID = "objstorage-imgcatalog"
-CONFIG_SCHEMA_VERSION = "3.2.0"
+CONFIG_SCHEMA_VERSION = "4.0.0"
 DEFAULT_SOURCE_ID = "my-obj-storage-1"
 LEGACY_SOURCE_ID = "images"
 
@@ -57,6 +57,12 @@ def parse_yaml(text: str, label: str) -> dict[str, Any]:
 
 def validate_part(value: dict[str, Any], defaults: dict[str, Any], label: str) -> None:
     for key, item in value.items():
+        if key == "notes_root":
+            raise AppError(
+                f"{label}: notes_root is no longer supported (including null). "
+                "Notes must be stored in <data_root>/notes. Back up and relocate any external "
+                "notes there before removing this setting; open data_root as the Obsidian Vault root."
+            )
         if key not in defaults:
             raise AppError(f"{label}: unknown setting {key}.")
         default = defaults[key]
@@ -232,13 +238,13 @@ def normalize_layer(
         # Preserve existing storage locations; loading never moves data or rewrites YAML.
         legacy = {key: item for key, item in value.items() if key != "schema_version"}
         return {"sources": {LEGACY_SOURCE_ID: legacy}}, True
-    if (major, minor) not in {(2, 0), (3, 0), (3, 1), (3, 2)}:
+    if (major, minor) not in {(2, 0), (3, 0), (3, 1), (3, 2), (4, 0)}:
         raise AppError(
-            f"{label}: unsupported config schema {version}; supported schema is 3.2.x (also reads 1.0.x/2.0.x/3.0.x/3.1.x)."
+            f"{label}: unsupported config schema {version}; supported schema is 4.0.x (also reads 1.0.x/2.0.x/3.0.x/3.1.x/3.2.x without notes_root)."
         )
     layer: dict[str, Any] = {}
     allowed = {"schema_version", "sources"}
-    if (major, minor) in {(3, 1), (3, 2)}:
+    if (major, minor) in {(3, 1), (3, 2), (4, 0)}:
         allowed.add("integration_tests")
     if "integration_tests" in value and "integration_tests" not in allowed:
         raise AppError(f"{label}: integration_tests requires config schema 3.1.0.")
@@ -247,7 +253,7 @@ def normalize_layer(
             raise AppError(f"{label}: move {key} into sources.<source-id>.{key}.")
     if "integration_tests" in value:
         validate_integration_tests(value["integration_tests"], f"{label}.integration_tests")
-        if minor < 2 and any(
+        if major == 3 and minor < 2 and any(
             target["provider"] == "s3" for target in value["integration_tests"].values()
         ):
             raise AppError(f"{label}: S3 integration_tests requires config schema 3.2.0.")
@@ -275,7 +281,6 @@ def resolve_source(settings: dict[str, Any], source_id: str, cwd: Path) -> None:
     for key, fallback in (
         ("data_root", user_root() / "data" / source_id),
         ("state_root", user_root() / "state" / source_id),
-        ("notes_root", Path(settings["data_root"] or user_root() / "data" / source_id) / "notes"),
     ):
         path = Path(settings[key]) if settings[key] is not None else fallback
         path = path.expanduser()
@@ -286,16 +291,9 @@ def resolve_source(settings: dict[str, Any], source_id: str, cwd: Path) -> None:
         if settings[group][key]:
             settings[group][key] = settings[group][key].rstrip("/")
     validate_provider(settings, f"sources.{source_id}")
-    data, state, notes = (Path(settings[k]) for k in ("data_root", "state_root", "notes_root"))
+    data, state = (Path(settings[k]) for k in ("data_root", "state_root"))
     if overlaps(data, state):
         raise AppError(f"sources.{source_id}: data_root and state_root must be separate trees.")
-    for reserved in ("staging", "originals", "releases", "catalog", "provenance"):
-        if overlaps(notes, data / reserved):
-            raise AppError(
-                f"sources.{source_id}: notes_root overlaps managed image or legacy migration trees."
-            )
-    if overlaps(notes, state):
-        raise AppError(f"sources.{source_id}: notes_root must not overlap state_root.")
 
 
 def overlaps(first: Path, second: Path) -> bool:
@@ -319,8 +317,8 @@ def validate_isolation(sources: dict[str, Any]) -> None:
                 )
             containers[target] = source_id
         for other_id, other in previous:
-            for key in ("data_root", "state_root", "notes_root"):
-                for other_key in ("data_root", "state_root", "notes_root"):
+            for key in ("data_root", "state_root"):
+                for other_key in ("data_root", "state_root"):
                     if overlaps(Path(settings[key]), Path(other[other_key])):
                         raise AppError(
                             f"sources.{source_id}.{key} overlaps sources.{other_id}.{other_key}; "
@@ -368,7 +366,7 @@ class Config:
 
     @property
     def notes_root(self) -> Path:
-        return Path(self.source_values["notes_root"])
+        return self.data_root / "notes"
 
     @property
     def azure(self) -> dict[str, Any]:

@@ -210,19 +210,15 @@ def test_migration_preserves_assets_without_original_and_legacy_references(cfg, 
     assert data["sourceUnavailableReason"] == "original_not_available"
 
 
-def test_migration_external_notes_root(cfg, asset, tmp_path):
-    from copy import deepcopy
-
+def test_migration_nested_notes(cfg, asset):
     note, _, _ = legacy(cfg, asset)
-    external = tmp_path / "vault"
-    external.mkdir()
-    note.rename(external / note.name)
-    changed = deepcopy(cfg)
-    changed.source_values["notes_root"] = str(external)
-    with Operation(changed, "migrate", False) as operation:
-        migrate(changed, operation)
-    assert NoteStore(changed).assets()[0]["asset_id"] == asset["asset_id"]
-    assert verify(changed)[0]["status"] == "valid"
+    nested = cfg.notes_root / "organized"
+    nested.mkdir()
+    note.rename(nested / note.name)
+    with Operation(cfg, "migrate", False) as operation:
+        migrate(cfg, operation)
+    assert NoteStore(cfg).assets()[0]["asset_id"] == asset["asset_id"]
+    assert verify(cfg)[0]["status"] == "valid"
 
 
 def test_cli_migrate_preview_and_apply(cfg, asset, capsys, tmp_path):
@@ -237,8 +233,6 @@ def test_cli_migrate_preview_and_apply(cfg, asset, capsys, tmp_path):
         str(cfg.data_root),
         "--state-root",
         str(cfg.state_root),
-        "--notes-root",
-        str(cfg.notes_root),
     ]
     before = snapshot(tmp_path)
     assert main(args + ["--dry-run"]) == 0

@@ -23,12 +23,12 @@ CLIはこのcheckoutの `cli.main` をプロセス内で呼び、parser・設定
 
 `uv sync --locked` で開発環境を準備します。リポジトリ移動後は、現在の `.venv/Scripts/python.exe` とR2起動補助のパスを確認してください。テストプログラムは現在のcheckoutの `src` を優先して読みます。
 
-普段の `~/.tkn/objstorage-imgcatalog/config.yaml` に、非秘密の接続先を `integration_tests` として追加します。通常の `sources` はそのまま残します。先に `uv tool install . --reinstall` でインストール済みCLIを0.5.0以降へ更新し、設定の `schema_version` を `"3.2.0"` にしてください。
+普段の `~/.tkn/objstorage-imgcatalog/config.yaml` に、非秘密の接続先を `integration_tests` として追加します。通常の `sources` はそのまま残します。先に `uv tool install . --reinstall` でインストール済みCLIを更新し、設定の `schema_version` を `"4.0.0"` にしてください。旧 `notes_root` 設定がある場合は、[READMEの移行手順](../../README.md#52-obsidian-の-vault-ルートと保存構成)に従い、ノートを `<data_root>/notes` に揃えて設定行を削除します。
 
 以下は追加する部分の例です。既存の設定全体を置き換えず、承認済みの引き継ぎ資料の値へ書き換えてください。ハッシュ欄も、後述のレビュー時に算出した64桁の値が必要です。
 
 ```yaml
-schema_version: "3.2.0"
+schema_version: "4.0.0"
 # 既存の sources は保持する
 integration_tests:
   azure:

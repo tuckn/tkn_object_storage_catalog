@@ -362,9 +362,12 @@ S3_TARGET = {
 }
 
 
-def test_s3_config_preserves_existing_targets_and_sources(tmp_path):
+@pytest.mark.parametrize("schema", ["3.2.0", "4.0.0"])
+def test_s3_config_preserves_existing_targets_and_sources(tmp_path, schema):
     path = tmp_path / "config.yaml"
     value = write_test_config(path, azure=target("azure"), r2=target(), s3=S3_TARGET)
+    value["schema_version"] = schema
+    path.write_text(json.dumps(value), encoding="utf-8")
     selected, digest = load_test_target(path, "s3")
     assert selected == S3_TARGET
     cfg = configuration.load_config(path, home=tmp_path / "empty", cwd=tmp_path)

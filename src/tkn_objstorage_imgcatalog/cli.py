@@ -79,13 +79,10 @@ def common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--data-root",
         default=argparse.SUPPRESS,
-        help="override image/data directory for this invocation",
+        help="override image/note data directory (Obsidian Vault root)",
     )
     parser.add_argument(
         "--state-root", default=argparse.SUPPRESS, help="override operation/sync state directory"
-    )
-    parser.add_argument(
-        "--notes-root", default=argparse.SUPPRESS, help="override proxy-note directory"
     )
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-q", "--quiet", action="store_true", default=argparse.SUPPRESS)
@@ -194,7 +191,7 @@ def parser() -> argparse.ArgumentParser:
 def config_overrides(args: argparse.Namespace) -> dict[str, Any]:
     overrides = {
         key: getattr(args, key)
-        for key in ("data_root", "state_root", "notes_root")
+        for key in ("data_root", "state_root")
         if hasattr(args, key)
     }
     if getattr(args, "convert", None) is not None:
@@ -235,7 +232,7 @@ def execute(args: argparse.Namespace) -> tuple[Any, int]:
             and (legacy_root() / "config.yaml").exists()
         ):
             raise AppError(
-                "An existing Azure config is in use. Inspect it with config list; to create a new config, use config init --path and preserve existing data_root/state_root/notes_root explicitly."
+                "An existing Azure config is in use. Inspect it with config list; to create a new config, use config init --path and preserve existing data_root/state_root explicitly; notes must be in <data_root>/notes."
             )
         return init_config(
             (args.path or user_root() / "config.yaml").expanduser().resolve(),
