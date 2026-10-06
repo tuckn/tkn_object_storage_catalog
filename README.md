@@ -29,19 +29,25 @@ Azure Blob Storage・AWS S3・Cloudflare R2 の画像を、手元の原本・公
 ```markdown
 ---
 type: image
-title: photo
+schemaVersion: "3.0.0"
+title: "photo.webp"
 description: 2026年春の展示会で撮影したブースの全景
-category: .
-tags: [展示会]
-nouns: []
-domains: []
-projects: [spring-exhibition]
+cover: "releases/photo.webp"
+
+# --- Asset identity ---
 assetId: <asset-id>
-noteId: <note-id>
+
+# --- Storage and synchronization ---
 url: https://examplestorage.blob.core.windows.net/images/photo.webp
 syncStatus: synced
+
+tags: [展示会]
+created: 2026-10-06T09:00:00+09:00
+updated: 2026-10-06T09:00:00+09:00
+noteId: <note-id>
 ---
-# photo
+
+# photo.webp
 
 <!-- object-storage-catalog:begin -->
 ![Image](../releases/photo.webp)
@@ -57,6 +63,16 @@ syncStatus: synced
 `title`、`description`、`tags` などと本文は、利用者が編集する項目です。
 `assetId`、`url`、`syncStatus` など、および `object-storage-catalog:begin` から `object-storage-catalog:end` までのブロックは、CLI が更新します。
 CLI は、利用者が編集した項目、独自に追加したプロパティ、ブロック外の本文を保持します。
+
+Frontmatter の項目順・英語の区切りコメント・本文の雛形は [resources/note.md](src/tkn_objstorage_imgcatalog/resources/note.md) で管理します。順番を変更する場合は、このファイル内の `key:` 行または空行で区切ったまとまりを移動します。Python コードの変更は不要です。
+
+- 既定の順番は、共通項目 → 画像ID → 原本・取得元 → 公開用画像・生成情報 → ストレージ・同期 → 既存の公開情報 → `tags`・`created`・`updated`・`noteId` です。
+- テンプレートの `key:` は値の挿入位置です。値や階層構造を書き込まず、区切りコメントには `# --- English label ---` を使います。存在しない任意項目や空のまとまりは出力しません。
+- `category` は出力せず、既存ノートの更新時にも削除します。`nouns`・`domains`・`projects` は空配列だけ削除し、入力済みの値は保持します。その他の独自項目は `tags` の直前に配置します。
+- `status`・`publicUrl`・`publicPath`・`published`・`lastModified` は、存在する場合だけ公開情報のまとまりに配置します。CLI は公開状態や公開日時を推測して追加しません。
+- Windows のパスはシングルクォートで囲み、Frontmatter と本文の間に空行を1行入れます。
+
+通常インストールの場合、テンプレートを編集した後は、このリポジトリで `uv tool install . --reinstall` を実行します。既存ノートには `tkn-objstorage-imgcatalog notes refresh --source <id> --dry-run` で確認してから、`--dry-run` を外して反映します。テンプレートの本文は新規ノートと自動生成ブロックに使い、既存ノートのブロック外の本文は保持します。
 
 ### 1.2. 対象範囲
 
@@ -233,7 +249,7 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 tkn-objstorage-imgcatalog --version
 ```
 
-`tkn-objstorage-imgcatalog 0.8.0` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-objstorage-imgcatalog 0.9.0` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
 コマンドとオプションの一覧は `tkn-objstorage-imgcatalog --help` で確認できます。
@@ -413,7 +429,7 @@ tkn-objstorage-imgcatalog verify --source my-obj-storage-1 --remote
 
 Frontmatter の `cover: releases/...` は Vault ルートを基準にしています。`notes` だけや `data_root` の親フォルダーを Vault として開くと、この参照先がずれます。`.obsidian` は Obsidian が設定保存用に管理するフォルダーで、CLI は作成しません。
 既定の配置では、ノートと手元の画像が同じ Vault に入るため、ノート内に画像が表示されます。
-`description`、`tags`、`nouns`、`domains`、`projects` と本文を自由に編集します。
+`description`、`tags` と本文を自由に編集します。`nouns`、`domains`、`projects` は必要な場合だけ手動で追加します。
 
 `tkn-objstorage-imgcatalog notes refresh --source my-obj-storage-1` を実行すると、ギャラリー表示用の `notes/images.base`（Obsidian Bases のビュー）が、存在しない場合に作成されます。
 

@@ -16,6 +16,7 @@ from .assets import NOTE_SCHEMA_VERSION, NoteStore, Record
 from .config import Config, resource
 from .errors import AppError, ConflictError
 from .io import atomic_bytes, sha256, within
+from .note_template import format_frontmatter, note_template
 
 # Keep the persisted markers stable across CLI/package renames.
 BEGIN = "<!-- object-storage-catalog:begin -->"
@@ -45,7 +46,7 @@ def serialize(data: CommentedMap, body: str) -> str:
     yaml.width = 4096
     stream = StringIO()
     yaml.dump(data, stream)
-    return "---\n" + stream.getvalue() + "---\n" + body
+    return "---\n" + stream.getvalue() + "---\n\n" + body.lstrip("\r\n")
 
 
 def urls(config: Config, relative: str) -> tuple[str | None, str | None]:
@@ -114,11 +115,9 @@ def render_note(
         if data.get("schemaVersion") == "1.0.0":
             data.pop(old, None)
     data.setdefault("type", "image")
-    data.setdefault("title", Path(record["relative_path"]).stem)
-    data.setdefault("description", "")
-    data.setdefault("category", Path(record["relative_path"]).parent.as_posix())
-    for key in ("tags", "nouns", "domains", "projects"):
-        data.setdefault(key, [])
+    data.setdefault("title", Path(record["relative_path"]).name)
+    data.setdefault("description", None)
+    data.setdefault("tags", [])
     source = record.get("source")
     image = NoteStore(config).release(record)
     blob, url = urls(config, record["relative_path"])
@@ -160,7 +159,8 @@ def render_note(
         if data.get(key) != value or key not in data:
             data[key] = value
     image_link = quote(os.path.relpath(image, path.parent).replace("\\", "/"), safe="/.")
-    content = Template(resource("note.md")).substitute(
+    _, template_body = note_template()
+    content = Template(template_body).substitute(
         title=str(data["title"]),
         image_link=image_link,
         local_url=image.as_uri(),
@@ -189,7 +189,15 @@ def render_note(
         body = body[: body.index(BEGIN)] + generated + body[body.index(END) + len(END) :]
     else:
         body = body.rstrip("\n") + "\n\n" + generated + "\n"
-    return serialize(data, body)
+    return format_frontmatter(data) + "\n" + body.lstrip("\r\n")
+
+
+def format_existing_note(text: str) -> str:
+    """Apply only the template layout; preserve values and the existing Markdown body."""
+    data, body = split_note(text)
+    if data.get("type") != "image" or not data.get("assetId"):
+        raise AppError("Only image catalog notes can be formatted.")
+    return format_frontmatter(data) + "\n" + body.lstrip("\r\n")
 
 
 def refresh_note(

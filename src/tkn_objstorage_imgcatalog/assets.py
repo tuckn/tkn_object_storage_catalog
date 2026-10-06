@@ -99,6 +99,11 @@ def record_from_note(config: Config, data: Any, relative_note: str) -> Record:
         raise AppError("Legacy note schema requires migrate and its legacy catalog.")
     if data.get("schemaVersion") != NOTE_SCHEMA_VERSION:
         raise AppError("Unsupported note schema version.")
+    # Obsidian/user edits may leave ISO timestamps unquoted in YAML.
+    data = dict(data)
+    for key in ("created", "updated", "sourceCapturedAt", "releaseGeneratedAt"):
+        if isinstance(data.get(key), datetime):
+            data[key] = data[key].isoformat()
     try:
         ref = data["releaseRef"]
         if not isinstance(ref, str) or not ref.startswith("releases/"):

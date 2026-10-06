@@ -201,12 +201,17 @@ SHA-256 はバイト列を識別し、アセットIDは管理対象の画像を�
 
 | 担当 | 項目・内容 |
 | --- | --- |
-| 利用者（Obsidian で編集） | `type`、`title`、`category`、`description`、`tags`、`nouns`、`domains`、`projects`、独自に追加したプロパティ、自動生成ブロックの外の本文 |
+| 利用者（Obsidian で編集） | `type`、`title`、`description`、`tags`、`nouns`、`domains`、`projects`、独自に追加したプロパティ、自動生成ブロックの外の本文 |
 | CLI | `schemaVersion`、`assetId`、`noteId`、`created`、`conversionRecipe`、`releaseGeneratedAt`、`sourceCapturedAt`、`acquiredFrom`、`localPath`、`releaseRef`、`sourceAvailable`、`sourceRef`、`originalRef`、`sourceSha256`、`sha256`、`bytes`、`storageProvider`、`objectKey`、`objectUrl`、`url`、`cover`、`updated`、`syncStatus` |
 
-- CLI が書き込む Frontmatter は、入れ子のない平坦な構造です。利用者が追加したプロパティは、平坦化も削除もしません。
+- CLI が書き込む Frontmatter は、入れ子のない平坦な構造です。入れ子のある既存プロパティは自動変換せず、書き込み前にエラーにします。
 - 新しく作成するノートの `type` は `image` です。
-- 新しく作成するノートは、`title` に拡張子を除いたファイル名、`category` に公開用画像の親フォルダーの相対パスを設定します。
+- 新しく作成するノートの `title` は拡張子を含むファイル名です。既存のタイトルは保持します。空の `description` は `description:` として出力します。
+- `category` は廃止し、更新時に削除します。`nouns`・`domains`・`projects` は自動追加せず、既存の空配列だけ削除し、入力済みの値は保持します。
+- 順番・英語の区切りコメント・本文の雛形は `src/tkn_objstorage_imgcatalog/resources/note.md` が定義します。Frontmatter は値なしの `key:` 行、まとまりの間は空行、コメントは `# --- English label ---` です。順番の変更はこのファイルで行います。未宣言の既存項目は `tags` の直前に保持します。テンプレートから宣言を外しても既存の管理情報は削除しません。
+- `schemaVersion`・`title`・`cover` はダブルクォート、Windows のパスはシングルクォートで囲みます。Frontmatter の終端と本文の間は空行1行です。入力日時は引用符の有無を問わず受け付けます。
+- 既定の順序は、共通項目、画像ID、原本・取得元、公開用画像・生成情報、ストレージ・同期、既存の公開情報、`tags`・`created`・`updated`・`noteId` です。公開情報や来歴の任意項目は存在する場合だけ出力します。
+- 区切りコメントはテンプレートに従って更新し、それ以外の利用者のコメントと本文を保持します。
 
 ### 3.3. 自動生成ブロック
 

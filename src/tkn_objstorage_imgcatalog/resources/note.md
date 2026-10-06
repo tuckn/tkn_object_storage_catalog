@@ -1,3 +1,51 @@
+---
+type:
+schemaVersion:
+title:
+description:
+cover:
+
+# --- Asset identity ---
+assetId:
+
+# --- Original and provenance ---
+sourceAvailable:
+sourceRef:
+originalRef:
+sourceSha256:
+sourceCapturedAt:
+sourceUnavailableReason:
+legacySourceRef:
+
+# --- Release and generation ---
+acquiredFrom:
+conversionRecipe:
+releaseGeneratedAt:
+releaseRef:
+localPath:
+sha256:
+bytes:
+
+# --- Storage and synchronization ---
+storageProvider:
+objectKey:
+objectUrl:
+url:
+syncStatus:
+
+# --- Publication metadata ---
+status:
+publicUrl:
+publicPath:
+published:
+lastModified:
+
+tags:
+created:
+updated:
+noteId:
+---
+
 # $title
 
 <!-- object-storage-catalog:begin -->

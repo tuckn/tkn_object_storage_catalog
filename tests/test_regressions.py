@@ -151,7 +151,8 @@ def test_different_libraries_do_not_share_baselines(cfg, asset):
 def test_future_note_schema_stops_push_preview(cfg, asset, blobs):
     path = find_note(cfg, asset)
     path.write_text(
-        path.read_text().replace("schemaVersion: 3.0.0", "schemaVersion: 99.0.0"), encoding="utf-8"
+        path.read_text().replace('schemaVersion: "3.0.0"', "schemaVersion: 99.0.0"),
+        encoding="utf-8",
     )
     with pytest.raises(AppError):
         with Operation(cfg, "push", True) as operation:

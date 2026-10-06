@@ -175,10 +175,12 @@ def test_r2_jurisdiction_endpoints(tmp_path, jurisdiction):
 
 def test_note_migration_preserves_human_content_and_ids(cfg, asset):
     path = find_note(cfg, asset)
-    text = path.read_text(encoding="utf-8").replace("schemaVersion: 3.0.0", "schemaVersion: 1.0.0")
+    text = path.read_text(encoding="utf-8").replace(
+        'schemaVersion: "3.0.0"', "schemaVersion: 1.0.0"
+    )
     text = text.replace("objectKey:", "blobName:").replace("objectUrl:", "blobUrl:")
     text = text.replace("object-storage-catalog:", "azure-blob-note:")
-    text = text.replace("description: ''", "description: My description # keep")
+    text = text.replace("description:", "description: My description # keep")
     text += "\n## VLM description\nHuman-reviewed text.\n"
     path.write_text(text, encoding="utf-8")
     from tkn_objstorage_imgcatalog.io import atomic_json

@@ -47,7 +47,7 @@ def test_original_preserved_idempotent(cfg, source, asset):
 def test_user_fields_comments_body_and_renamed_note(cfg, asset):
     note = find_note(cfg, asset)
     text = note.read_text(encoding="utf-8")
-    text = text.replace("description: ''", 'description: "My annotation" # keep comment')
+    text = text.replace("description:", 'description: "My annotation" # keep comment')
     text = text.replace("tags: []", 'tags: [personal]\ncustomRelation: "[[Related note]]"')
     text += "\n## User notes\nDo not change this.\n"
     note.write_text(text, encoding="utf-8")
@@ -67,7 +67,8 @@ def test_user_fields_comments_body_and_renamed_note(cfg, asset):
 def test_title_change_does_not_rename_blob(cfg, asset):
     note = find_note(cfg, asset)
     note.write_text(
-        note.read_text().replace("title: example", "title: A different title"), encoding="utf-8"
+        note.read_text().replace('title: "example.webp"', 'title: "A different title"'),
+        encoding="utf-8",
     )
     refresh_notes(cfg, [])
     assert NoteStore(cfg).assets()[0]["relative_path"] == "example.webp"
@@ -122,7 +123,7 @@ def test_colliding_inputs_preflight(cfg, source):
 
 def test_invalid_note_schema_preserved(cfg, asset):
     path = find_note(cfg, asset)
-    content = path.read_text().replace("schemaVersion: 3.0.0", "schemaVersion: 99.0.0")
+    content = path.read_text().replace('schemaVersion: "3.0.0"', "schemaVersion: 99.0.0")
     path.write_text(content, encoding="utf-8")
     with pytest.raises(AppError):
         refresh_notes(cfg, [])
