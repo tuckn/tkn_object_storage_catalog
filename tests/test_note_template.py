@@ -73,7 +73,7 @@ def test_formatting_retains_values_comments_custom_properties_and_body(cfg, asse
     assert after_body == body
     for key, value in data.items():
         if key not in {"category", "domains", "projects"}:
-            assert after[key] == value
+            assert after[key] == (value.isoformat() if isinstance(value, datetime) else value)
     assert not {"category", "domains", "projects"} & after.keys()
     assert list(after).index("customRelation") < list(after).index("tags")
     assert "# keep this comment" in result
@@ -86,8 +86,11 @@ def test_unquoted_managed_datetimes_are_accepted(cfg, asset):
     note = find_note(cfg, asset)
     data, body = split_note(note.read_text(encoding="utf-8"))
     for key in ("created", "updated", "sourceCapturedAt", "releaseGeneratedAt"):
-        data[key] = datetime.fromisoformat(data[key])
-    note.write_text(serialize(data, body), encoding="utf-8")
+        assert isinstance(data[key], str)
+    raw = serialize(data, body)
+    for key in ("created", "updated", "sourceCapturedAt", "releaseGeneratedAt"):
+        raw = raw.replace(f'{key}: "{data[key]}"', f"{key}: {data[key]}")
+    note.write_text(raw, encoding="utf-8")
     record = NoteStore(cfg).assets()[0]
     assert record["created_at"] == asset["created_at"]
     refresh_notes(cfg, [])

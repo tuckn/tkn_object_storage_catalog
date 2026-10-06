@@ -13,6 +13,7 @@ from ruamel.yaml.tokens import CommentToken
 
 from .config import resource
 from .errors import AppError
+from .yaml_dates import quote_dates
 
 # Section comments with this syntax belong to the template, not the user's values.
 SECTION = re.compile(r"(?m)^[ \t]*# --- .+ ---[ \t]*(?:\r?\n|$)")
@@ -69,7 +70,7 @@ def format_frontmatter(data: CommentedMap) -> str:
     groups, _ = note_template()
     # ruamel TimeStamp.__deepcopy__ can discard timezone information.
     # Values are only replaced here; copy comment metadata independently.
-    values = CommentedMap(data)
+    values = quote_dates(CommentedMap(data))
     values.ca.items.update(deepcopy(data.ca.items))
     values.ca.comment = deepcopy(data.ca.comment)
     values.pop("category", None)

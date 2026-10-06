@@ -9,7 +9,6 @@ from string import Template
 from typing import Any
 from urllib.parse import quote
 
-from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.error import YAMLError
 
@@ -18,6 +17,7 @@ from .config import Config, resource
 from .errors import AppError, ConflictError
 from .io import atomic_bytes, now, sha256, within
 from .note_template import format_frontmatter, note_template
+from .yaml_dates import note_yaml, quote_dates
 
 # Keep the persisted markers stable across CLI/package renames.
 BEGIN = "<!-- object-storage-catalog:begin -->"
@@ -27,8 +27,7 @@ LEGACY_END = "<!-- azure-blob-note:end -->"
 
 
 def split_note(text: str) -> tuple[CommentedMap, str]:
-    yaml = YAML()
-    yaml.preserve_quotes = True
+    yaml = note_yaml()
     match = re.match(r"\A\ufeff?---\r?\n(.*?)\r?\n---(?:\r?\n|$)", text, re.S)
     if not match:
         return CommentedMap(), text
@@ -42,11 +41,9 @@ def split_note(text: str) -> tuple[CommentedMap, str]:
 
 
 def serialize(data: CommentedMap, body: str) -> str:
-    yaml = YAML()
-    yaml.preserve_quotes = True
-    yaml.width = 4096
+    yaml = note_yaml()
     stream = StringIO()
-    yaml.dump(data, stream)
+    yaml.dump(quote_dates(data), stream)
     return "---\n" + stream.getvalue() + "---\n\n" + body.lstrip("\r\n")
 
 

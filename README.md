@@ -42,8 +42,8 @@ url: https://examplestorage.blob.core.windows.net/images/photo.webp
 syncStatus: synced
 
 tags: [展示会]
-created: 2026-10-06T09:00:00+09:00
-updated: 2026-10-06T09:00:00+09:00
+created: "2026-10-06T09:00:00+09:00"
+updated: "2026-10-06T09:00:00+09:00"
 noteId: <note-id>
 ---
 
@@ -72,6 +72,7 @@ Frontmatter の項目順・英語の区切りコメント・本文の雛形は [
 - テンプレートの `key:` は値の挿入位置です。値や階層構造を書き込まず、区切りコメントには `# --- English label ---` を使います。存在しない任意項目や空のまとまりは出力しません。
 - `category` は出力せず、既存ノートの更新時にも削除します。`nouns`・`domains`・`projects` は空配列だけ削除し、入力済みの値は保持します。その他の独自項目は `tags` の直前に配置します。
 - `status`・`publicUrl`・`publicPath`・`published`・`lastModified` は、存在する場合だけ公開情報のまとまりに配置します。CLI は公開状態や公開日時を推測して追加しません。
+- 日付・日時はダブルクォートで囲んだ ISO 8601 の文字列として出力します（例: `"2026-10-07"`、`"2026-10-07T09:30:00+09:00"`）。既存の引用符なし・シングルクォートの入力も読み取れます。タイムゾーン・小数秒の精度は保持します。
 - Windows のパスはシングルクォートで囲み、Frontmatter と本文の間に空行を1行入れます。
 
 通常インストールの場合、テンプレートを編集した後は、このリポジトリで `uv tool install . --reinstall` を実行します。既存ノートには `tkn-objstorage-imgcatalog notes refresh --source <id> --dry-run` で確認してから、`--dry-run` を外して反映します。テンプレートの本文は新規ノートと自動生成ブロックに使い、既存ノートのブロック外の本文は保持します。
@@ -258,7 +259,7 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 tkn-objstorage-imgcatalog --version
 ```
 
-`tkn-objstorage-imgcatalog 0.11.0` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-objstorage-imgcatalog 0.11.1` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
 コマンドとオプションの一覧は `tkn-objstorage-imgcatalog --help` で確認できます。
