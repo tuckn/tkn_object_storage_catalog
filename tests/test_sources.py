@@ -289,14 +289,18 @@ def test_cli_reports_all_sources_and_requires_selection_before_any_work(
         (["pull", "--dry-run"], "pull"),
         (["notes", "refresh", "--dry-run"], "refresh_notes"),
         (["recover", "--dry-run"], "recover"),
+        (["migrate", "--dry-run"], "migrate"),
         (["status"], "status"),
         (["verify", "--remote"], "verify"),
     ],
 )
+@pytest.mark.parametrize("source_count", [1, 2])
+@pytest.mark.parametrize("placement", ["before", "after"])
 def test_every_command_routes_to_selected_source(
-    tmp_path, monkeypatch, capsys, blobs, args, function
+    tmp_path, monkeypatch, capsys, blobs, args, function, source_count, placement
 ):
-    path = write_config(tmp_path, pair())
+    sources = pair() if source_count == 2 else {"private-images": pair()["private-images"]}
+    path = write_config(tmp_path, sources)
     calls = []
     connections = []
 
@@ -311,7 +315,9 @@ def test_every_command_routes_to_selected_source(
     monkeypatch.setattr(cli, function, capture)
     monkeypatch.setattr(cli, "open_store", adapter)
     monkeypatch.setattr(blobs, "close", lambda: None, raising=False)
-    assert cli.main(["--source", "private-images", "--config", str(path), *args]) == 0
+    selection = ["--source", "private-images"]
+    command = [*selection, *args] if placement == "before" else [*args, *selection]
+    assert cli.main(["--config", str(path), *command]) == 0
     assert calls == ["private-images"]
     assert json.loads(capsys.readouterr().out)["source_id"] == "private-images"
     if args[0] in {"push", "pull", "verify"}:
@@ -397,3 +403,51 @@ def test_template_has_custom_source_id_and_valid_second_source_example(tmp_path)
     assert set(config.sources) == {"my-obj-storage-1", "my-obj-storage-2"}
     assert config.source_id is None
     assert config.select_source("my-obj-storage-2").data_root.name == "my-obj-storage-2"
+
+
+DATA_COMMANDS = [
+    ["import"],
+    ["build"],
+    ["push"],
+    ["pull"],
+    ["notes", "refresh"],
+    ["recover"],
+    ["migrate"],
+    ["status"],
+    ["verify"],
+]
+
+
+@pytest.mark.parametrize("commands", DATA_COMMANDS)
+@pytest.mark.parametrize("source_count", [0, 1, 2])
+@pytest.mark.parametrize("preview", [False, True])
+def test_source_omission_stops_before_config_or_io(
+    tmp_path, monkeypatch, capsys, commands, source_count, preview
+):
+    path = write_config(tmp_path, dict(list(pair().items())[:source_count]))
+    before = snapshot(tmp_path)
+    monkeypatch.setattr(cli, "load_config", lambda *a, **k: pytest.fail("Config was read"))
+    monkeypatch.setattr(cli, "open_store", lambda *a: pytest.fail("Storage was opened"))
+    options = ["--remote"] if commands[0] in {"status", "verify"} else ["--dry-run"]
+    args = [*commands, *(options if preview else [])]
+    assert cli.main(["--config", str(path), *args]) == 2
+    result = json.loads(capsys.readouterr().out)
+    assert result["status"] == "failed"
+    assert "Specify --source <id>" in result["error"]
+    assert snapshot(tmp_path) == before
+
+
+@pytest.mark.parametrize("commands", DATA_COMMANDS)
+def test_unknown_source_stops_before_storage(tmp_path, monkeypatch, capsys, commands):
+    path = write_config(tmp_path, {"public-images": pair()["public-images"]})
+    before = snapshot(tmp_path)
+    monkeypatch.setattr(cli, "open_store", lambda *a: pytest.fail("Storage was opened"))
+    assert cli.main(["--config", str(path), *commands, "--source", "missing"]) == 2
+    assert "Unknown source" in json.loads(capsys.readouterr().out)["error"]
+    assert snapshot(tmp_path) == before
+
+
+def test_config_init_without_source(tmp_path, capsys):
+    assert cli.main(["config", "init", "--dry-run"]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "created"
+    assert not (tmp_path / "home").exists()

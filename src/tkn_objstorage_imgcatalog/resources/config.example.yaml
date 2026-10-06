@@ -44,7 +44,7 @@ sources:
       strip_metadata: true
 
   # Example of an AWS S3 source: uncomment and set its bucket/region/profile.
-  # Multiple active sources require --source <source-id> for data commands.
+  # Every data command requires --source <source-id>, even with one source.
   # Each container/bucket must be unique across sources, even with different prefixes.
   # my-obj-storage-2:
   #   data_root: null

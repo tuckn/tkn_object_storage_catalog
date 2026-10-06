@@ -233,7 +233,7 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 tkn-objstorage-imgcatalog --version
 ```
 
-`tkn-objstorage-imgcatalog 0.6.0` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-objstorage-imgcatalog 0.7.0` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
 コマンドとオプションの一覧は `tkn-objstorage-imgcatalog --help` で確認できます。
@@ -350,9 +350,10 @@ S3 と R2 では同じ `s3` 設定ブロックを使います。`provider` に�
 **1. 画像を取り込みます。**
 
 `C:\path\to\photo.png` は、実在する画像のパスに置き換えます。
+`my-obj-storage-1` は設定した source ID に置き換えます。source が1件でも指定が必要です。
 
 ```shell
-tkn-objstorage-imgcatalog import "C:\path\to\photo.png"
+tkn-objstorage-imgcatalog import --source my-obj-storage-1 "C:\path\to\photo.png"
 ```
 
 原本が `originals/<sha256>/` に保存され、公開用画像 `releases/photo.webp` と画像ノート `notes/photo.webp.md` が作成されます。
@@ -385,8 +386,8 @@ JPEG や PNG を変換せずに取り込むには、`import --no-convert` を使
 **2. アップロードの内容を確認してから、アップロードします。**
 
 ```shell
-tkn-objstorage-imgcatalog push photo.webp --dry-run
-tkn-objstorage-imgcatalog push photo.webp
+tkn-objstorage-imgcatalog push --source my-obj-storage-1 photo.webp --dry-run
+tkn-objstorage-imgcatalog push --source my-obj-storage-1 photo.webp
 ```
 
 > [!IMPORTANT]
@@ -400,7 +401,7 @@ tkn-objstorage-imgcatalog push photo.webp
 **3. クラウド上の画像が手元と一致することを確認します。**
 
 ```shell
-tkn-objstorage-imgcatalog verify --remote
+tkn-objstorage-imgcatalog verify --source my-obj-storage-1 --remote
 ```
 
 表示された JSON の `valid` が `true` であれば、手元の画像、原本、画像ノート、クラウド上の画像に不整合はありません。
@@ -412,7 +413,7 @@ tkn-objstorage-imgcatalog verify --remote
 既定の配置では、ノートと手元の画像が同じ Vault に入るため、ノート内に画像が表示されます。
 `description`、`tags`、`nouns`、`domains`、`projects` と本文を自由に編集します。
 
-`tkn-objstorage-imgcatalog notes refresh` を実行すると、ギャラリー表示用の `notes/images.base`（Obsidian Bases のビュー）が、存在しない場合に作成されます。
+`tkn-objstorage-imgcatalog notes refresh --source my-obj-storage-1` を実行すると、ギャラリー表示用の `notes/images.base`（Obsidian Bases のビュー）が、存在しない場合に作成されます。
 
 既存の Vault に組み込む方法は「[5.2. 既存の Vault にノートを置く](#52-既存の-vault-にノートを置く)」で説明します。
 
@@ -420,27 +421,27 @@ tkn-objstorage-imgcatalog verify --remote
 
 ```shell
 # フォルダーを取り込む。フォルダー内の相対的な階層を保つ。
-tkn-objstorage-imgcatalog import "C:\path\to\images"
+tkn-objstorage-imgcatalog import --source my-obj-storage-1 "C:\path\to\images"
 
-# 引数を省略すると、データ保存領域の staging フォルダーを取り込む。
-tkn-objstorage-imgcatalog import
+# 入力パスを省略すると、指定した source の staging フォルダーを取り込む。
+tkn-objstorage-imgcatalog import --source my-obj-storage-1
 
 # 手元の状態を確認する。--remote を付けると クラウドとも比較する。
-tkn-objstorage-imgcatalog status
-tkn-objstorage-imgcatalog status --remote
+tkn-objstorage-imgcatalog status --source my-obj-storage-1
+tkn-objstorage-imgcatalog status --source my-obj-storage-1 --remote
 
 # 設定した範囲の管理対象画像をすべて転送する。
-tkn-objstorage-imgcatalog push
-tkn-objstorage-imgcatalog pull
+tkn-objstorage-imgcatalog push --source my-obj-storage-1
+tkn-objstorage-imgcatalog pull --source my-obj-storage-1
 
 # 変換設定を変えた後、保存してある原本から公開用画像を作り直す。
-tkn-objstorage-imgcatalog build
+tkn-objstorage-imgcatalog build --source my-obj-storage-1
 
 # ノートの自動生成項目（メタデータ、URL、手元の画像へのリンク）を更新する。
-tkn-objstorage-imgcatalog notes refresh
+tkn-objstorage-imgcatalog notes refresh --source my-obj-storage-1
 
 # 手元のハッシュ値とノートの識別子を検査する。
-tkn-objstorage-imgcatalog verify
+tkn-objstorage-imgcatalog verify --source my-obj-storage-1
 ```
 
 取り込みを繰り返したときの動作は、次のとおりです。
@@ -466,8 +467,8 @@ CLI は、ノートに記録された ID で対応するノートを見つけま
 次は、クラウド側の内容で手元を置き換える例です。
 
 ```shell
-tkn-objstorage-imgcatalog pull photo.webp --overwrite --dry-run
-tkn-objstorage-imgcatalog pull photo.webp --overwrite --yes
+tkn-objstorage-imgcatalog pull --source my-obj-storage-1 photo.webp --overwrite --dry-run
+tkn-objstorage-imgcatalog pull --source my-obj-storage-1 photo.webp --overwrite --yes
 ```
 
 > [!WARNING]
@@ -495,10 +496,10 @@ tkn-objstorage-imgcatalog pull photo.webp --overwrite --yes
 次の順で状態を確認し、復旧します。
 
 ```shell
-tkn-objstorage-imgcatalog verify
-tkn-objstorage-imgcatalog recover --dry-run
-tkn-objstorage-imgcatalog recover
-tkn-objstorage-imgcatalog verify
+tkn-objstorage-imgcatalog verify --source my-obj-storage-1
+tkn-objstorage-imgcatalog recover --source my-obj-storage-1 --dry-run
+tkn-objstorage-imgcatalog recover --source my-obj-storage-1
+tkn-objstorage-imgcatalog verify --source my-obj-storage-1
 ```
 
 `recover` は、公開用画像の書き込みまで終わっていて、ノートの更新だけが残っている処理を完了させます。
@@ -534,8 +535,9 @@ tkn-objstorage-imgcatalog verify
 
 **source の選択**
 
-source が1つなら自動で選びます。複数ある場合、データを扱うすべてのコマンドに
-`--source <id>` を指定します。アセットの省略は、その source 内の全アセットを意味します。
+source が1つでも、データを扱うすべてのコマンドに `--source <id>` を明示します。
+省略すると、設定の読み込み・ファイルへの書き込み・クラウド接続の前にエラーになります。
+`config init`・`config list` では指定不要です。アセットの省略は、その source 内の全アセットを意味します。
 
 ```shell
 tkn-objstorage-imgcatalog import --source my-obj-storage-1 "C:\path\to\photo.png"

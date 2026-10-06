@@ -295,7 +295,7 @@ def test_factory_selects_the_matching_adapter(tmp_path, monkeypatch, provider):
 def test_sdk_errors_are_bounded_and_credential_free(tmp_path, monkeypatch, capsys, error):
     path = write_config(tmp_path, {"images": settings("s3")})
     monkeypatch.setattr(cli, "open_store", Mock(side_effect=error))
-    assert cli.main(["--config", str(path), "push", "--dry-run"]) == 3
+    assert cli.main(["--config", str(path), "push", "--source", "images", "--dry-run"]) == 3
     output = capsys.readouterr()
     assert "credential-secret" not in output.out + output.err
     assert json.loads(output.out)["status"] == "failed"

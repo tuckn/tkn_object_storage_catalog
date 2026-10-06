@@ -231,6 +231,8 @@ def test_cli_migrate_preview_and_apply(cfg, asset, capsys, tmp_path):
     legacy(cfg, asset)
     args = [
         "migrate",
+        "--source",
+        "my-obj-storage-1",
         "--data-root",
         str(cfg.data_root),
         "--state-root",

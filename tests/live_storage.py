@@ -320,7 +320,9 @@ class LiveRun:
             redirect_stderr(stderr),
             patch.object(sys, "stdin", StringIO()),
         ):
-            code = cli.main(["--config", str(path), "--quiet", *map(str, args)])
+            code = cli.main(
+                ["--config", str(path), "--source", "integration", "--quiet", *map(str, args)]
+            )
         require(code == expected)
         return json.loads(stdout.getvalue())
 

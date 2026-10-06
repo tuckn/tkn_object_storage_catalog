@@ -68,7 +68,7 @@ def common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--source",
         default=argparse.SUPPRESS,
-        help="source ID; required for data commands when multiple sources are configured",
+        help="source ID; required for every data command, even with one configured source",
     )
     parser.add_argument(
         "--config",
@@ -224,6 +224,10 @@ def print_config(value: dict[str, Any]) -> None:
 
 
 def execute(args: argparse.Namespace) -> tuple[Any, int]:
+    if args.command != "config" and not getattr(args, "source", None):
+        raise AppError(
+            "Specify --source <id> for every data command, even with one configured source."
+        )
     if args.command == "config" and args.config_command == "init":
         if (
             args.path is None
