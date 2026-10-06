@@ -1,5 +1,12 @@
 # 変更履歴
 
+## 0.5.0 — 2026-10-06
+
+- 設定スキーマ3.2.0で `integration_tests` のAWS S3登録に対応しました。専用profile、region、期待account/role、標準endpointを照合用ハッシュに含めます。Azure/R2の既存形式と通常のsourcesは維持します。
+- S3の実環境テストに、STS照合、未存在HEADの404、匿名403 AccessDenied、公開状態不明の確認、manifest所有画像のIfMatch付き削除を組み込みました。STSクライアントの実SDKに対応しない終了処理を修正しました。
+- 登録・認証・実行・後片付けの手順と、S3テスト設定をクラウド接続なしで検査する方法を整備しました。
+- S3実環境の32項目が成功し、生成画像2件をmanifestとIfMatchで削除、残存0を確認しました。[検証結果](docs/testing/2026-10-06-s3-live-results.md)に範囲と未検証事項を記録しています。
+
 ## 0.4.2 — 2026-10-06
 
 - 既定の設定・データ保存先を `~/.tkn/object_storage_catalog/` から `~/.tkn/objstorage-imgcatalog/` に変更しました。

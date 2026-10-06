@@ -219,7 +219,9 @@ def test_generated_image_import_uses_short_isolated_workspace(tmp_path):
 
 def write_test_config(path, **targets):
     value = {
-        "schema_version": "3.1.0",
+        "schema_version": "3.2.0"
+        if any(t["provider"] == "s3" for t in targets.values())
+        else "3.1.0",
         "sources": {"ordinary": {"azure": {"container": "images"}}},
         "integration_tests": {
             name: item | {"expected_target_sha256": target_digest(item)}
@@ -437,12 +439,10 @@ def test_s3_identity_fields_are_bound_to_reviewed_digest(field, value):
     ],
 )
 def test_s3_checks_assumed_role_using_explicit_profile(monkeypatch, identity, accepted):
-    from unittest.mock import MagicMock
-
     from live_storage import verify_s3_identity
 
-    session = MagicMock()
-    session.return_value.client.return_value.__enter__.return_value.get_caller_identity.return_value = identity
+    session = Mock()
+    session.return_value.client.return_value.get_caller_identity.return_value = identity
     monkeypatch.setattr("live_storage.boto3.Session", session)
     monkeypatch.setenv("AWS_PROFILE", "unrelated")
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "injected-r2")
@@ -453,6 +453,7 @@ def test_s3_checks_assumed_role_using_explicit_profile(monkeypatch, identity, ac
             verify_s3_identity(S3_TARGET)
     session.assert_called_once_with(profile_name=S3_TARGET["profile"])
     assert session.return_value.client.call_args.kwargs["config"].ignore_configured_endpoint_urls
+    session.return_value.client.return_value.close.assert_called_once_with()
 
 
 def s3_cleanup_fixture(run_id=RUN_ID):
@@ -557,3 +558,76 @@ def test_s3_anonymous_requires_403_access_denied(monkeypatch, status, code, acce
     else:
         with pytest.raises(AssertionError):
             anonymous_denied("https://example.invalid", "s3")
+
+
+@pytest.mark.parametrize("version", ["3.0.0", "3.1.0"])
+def test_s3_requires_schema_3_2_without_rewriting_config(tmp_path, version):
+    path = tmp_path / "config.yaml"
+    value = write_test_config(path, s3=S3_TARGET)
+    value["schema_version"] = version
+    path.write_text(json.dumps(value), encoding="utf-8")
+    before = path.read_bytes()
+    with pytest.raises(AppError, match="requires config schema"):
+        load_test_target(path, "s3")
+    assert path.read_bytes() == before
+
+
+def test_s3_check_uses_shared_config_without_authentication(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "config.yaml"
+    write_test_config(path, azure=target("azure"), r2=target(), s3=S3_TARGET)
+    monkeypatch.setattr(configuration, "user_root", lambda: tmp_path)
+    auth = Mock(side_effect=AssertionError("Unexpected authentication"))
+    live = Mock(side_effect=AssertionError("Unexpected live execution"))
+    monkeypatch.setattr("live_storage.boto3.Session", auth)
+    monkeypatch.setattr("live_storage.LiveRun", live)
+    monkeypatch.setattr("live_storage.logging.disable", lambda level: None)
+    before = path.read_bytes()
+    assert live_main(["--check", "--test-target", "s3"]) == 0
+    assert json.loads(capsys.readouterr().out)["provider"] == "s3"
+    auth.assert_not_called()
+    live.assert_not_called()
+    assert path.read_bytes() == before
+
+
+def test_s3_cleanup_failure_fails_otherwise_successful_run(tmp_path, monkeypatch):
+    run = LiveRun(S3_TARGET, target_digest(S3_TARGET), tmp_path)
+    run.manifest, run.store = s3_cleanup_fixture(run.run_id)
+    run.scenario = Mock()
+    run.remote_keys = Mock(return_value=[])
+    monkeypatch.setattr("live_storage.verify_s3_identity", lambda target: None)
+    run.store.client.delete_object.side_effect = ClientError(
+        {"Error": {"Code": "PreconditionFailed"}, "ResponseMetadata": {"HTTPStatusCode": 412}},
+        "DeleteObject",
+    )
+    assert run.execute() == 1
+    assert run.report["status"] == "failed"
+    assert run.report["cleanup"]["error"]["http_status"] == 412
+    assert run.report["cleanup"]["method"] == "manifest-and-IfMatch"
+    run.store.client.delete_object.assert_called_once()
+    run.store.client.delete_objects.assert_not_called()
+    run.store.close.assert_called_once()
+
+
+def test_s3_sts_uses_real_sdk_client_and_closes_it(monkeypatch):
+    import boto3
+    from botocore.stub import Stubber
+    from live_storage import verify_s3_identity
+
+    session = boto3.Session(aws_access_key_id="testing", aws_secret_access_key="testing")
+    client = session.client("sts", region_name="ap-northeast-1")
+    client.close = Mock(wraps=client.close)
+    session.client = Mock(return_value=client)
+    monkeypatch.setattr("live_storage.boto3.Session", Mock(return_value=session))
+    with Stubber(client) as stub:
+        stub.add_response(
+            "get_caller_identity",
+            {
+                "Account": "123456789012",
+                "Arn": "arn:aws:sts::123456789012:assumed-role/example-catalog-test/session",
+                "UserId": "example:session",
+            },
+            {},
+        )
+        verify_s3_identity(S3_TARGET)
+        stub.assert_no_pending_responses()
+    client.close.assert_called_once_with()

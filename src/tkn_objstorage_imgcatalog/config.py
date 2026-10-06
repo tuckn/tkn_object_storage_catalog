@@ -15,7 +15,7 @@ from .errors import AppError, ConflictError
 from .io import atomic_bytes, check_schema, now, safe_relative, sha256
 
 APPLICATION_ID = "objstorage-imgcatalog"
-CONFIG_SCHEMA_VERSION = "3.1.0"
+CONFIG_SCHEMA_VERSION = "3.2.0"
 DEFAULT_SOURCE_ID = "my-obj-storage-1"
 LEGACY_SOURCE_ID = "images"
 
@@ -232,13 +232,13 @@ def normalize_layer(
         # Preserve existing storage locations; loading never moves data or rewrites YAML.
         legacy = {key: item for key, item in value.items() if key != "schema_version"}
         return {"sources": {LEGACY_SOURCE_ID: legacy}}, True
-    if (major, minor) not in {(2, 0), (3, 0), (3, 1)}:
+    if (major, minor) not in {(2, 0), (3, 0), (3, 1), (3, 2)}:
         raise AppError(
-            f"{label}: unsupported config schema {version}; supported schema is 3.1.x (also reads 1.0.x/2.0.x/3.0.x)."
+            f"{label}: unsupported config schema {version}; supported schema is 3.2.x (also reads 1.0.x/2.0.x/3.0.x/3.1.x)."
         )
     layer: dict[str, Any] = {}
     allowed = {"schema_version", "sources"}
-    if (major, minor) == (3, 1):
+    if (major, minor) in {(3, 1), (3, 2)}:
         allowed.add("integration_tests")
     if "integration_tests" in value and "integration_tests" not in allowed:
         raise AppError(f"{label}: integration_tests requires config schema 3.1.0.")
@@ -247,6 +247,10 @@ def normalize_layer(
             raise AppError(f"{label}: move {key} into sources.<source-id>.{key}.")
     if "integration_tests" in value:
         validate_integration_tests(value["integration_tests"], f"{label}.integration_tests")
+        if minor < 2 and any(
+            target["provider"] == "s3" for target in value["integration_tests"].values()
+        ):
+            raise AppError(f"{label}: S3 integration_tests requires config schema 3.2.0.")
         layer["integration_tests"] = deepcopy(value["integration_tests"])
     if "sources" not in value:
         return layer, False

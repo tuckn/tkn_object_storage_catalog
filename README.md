@@ -139,7 +139,7 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 tkn-objstorage-imgcatalog --version
 ```
 
-`tkn-objstorage-imgcatalog 0.4.2` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-objstorage-imgcatalog 0.5.0` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
 コマンドとオプションの一覧は `tkn-objstorage-imgcatalog --help` で確認できます。
@@ -159,7 +159,7 @@ tkn-objstorage-imgcatalog config list
 
 実環境テストの接続先も、この `config.yaml` の `integration_tests` に登録できます。
 通常の `sources` とは別に管理し、テスト時の保存先は毎回分離します。秘密値は記載しません。
-登録と実行方法は [Azure / R2 実環境統合テスト](docs/testing/live-storage.md) を参照してください。
+登録と実行方法は [Azure / R2 / S3 実環境統合テスト](docs/testing/live-storage.md) を参照してください。
 
 ### 2.4. 接続先と認証の設定
 
@@ -170,7 +170,7 @@ tkn-objstorage-imgcatalog config list
 **Azure Blob Storage**
 
 ```yaml
-schema_version: "3.1.0"
+schema_version: "3.2.0"
 sources:
   my-obj-storage-1:
     provider: azure
@@ -192,7 +192,7 @@ Azure 上では `azure.auth: managed_identity` も選べます。
 **AWS S3**
 
 ```yaml
-schema_version: "3.1.0"
+schema_version: "3.2.0"
 sources:
   my-obj-storage-1:
     provider: s3
@@ -213,7 +213,7 @@ SSE-KMS を使うバケットでは KMS の権限も必要です。
 **Cloudflare R2**
 
 ```yaml
-schema_version: "3.1.0"
+schema_version: "3.2.0"
 sources:
   my-obj-storage-1:
     provider: r2
@@ -556,7 +556,7 @@ Obsidian 上で画像がプレビュー表示されるかどうかは、利用�
 `delivery` と `conversion` は source ごとに変えられます。
 
 ```yaml
-schema_version: "3.1.0"
+schema_version: "3.2.0"
 sources:
   my-obj-storage-1:
     provider: azure
@@ -600,7 +600,7 @@ tkn-objstorage-imgcatalog pull --source my-obj-storage-2 --dry-run
 
 旧設定が使われている状態での `config init` は、新しい設定で隠してしまわないように停止します。
 そのまま使う場合は `config list` で確認してください。
-手動で `3.1.0` へ移行する場合は、先に `config list --json` で確認した `data_root`・`state_root`・`notes_root` を明記します。
+手動で `3.2.0` へ移行する場合は、先に `config list --json` で確認した `data_root`・`state_root`・`notes_root` を明記します。
 新しいユーザー設定を作成すると、旧ユーザー設定の自動読み込みは終了します。
 
 ノートは次に更新する際に `schemaVersion: 2.0.0` となり、`blobName` / `blobUrl` を `objectKey` / `objectUrl` に置き換え、`storageProvider` を記録します。
@@ -679,7 +679,7 @@ uv build
 
 > [!NOTE]
 > 通常の `pytest` は、一時フォルダーのデータ、ストレージを模した処理、AWS SDK の応答スタブを使い、クラウドへ接続しません。
-> Azure / R2 の専用テスト環境を使う場合は、[実環境統合テスト](docs/testing/live-storage.md)を明示的に実行します。生成画像の転送・競合拒否・非公開アクセスを確認し、R2は今回の生成物だけを削除、Azureは保持設定に任せます。
+> Azure / R2 の専用テスト環境を使う場合は、[実環境統合テスト](docs/testing/live-storage.md)を明示的に実行します。生成画像の転送・競合拒否・非公開アクセスを確認し、R2/S3は今回の生成物だけを削除し、S3では専用profileのaccount/role照合と条件付き削除も行います。Azureは保持設定に任せます。
 
 - パッケージは `src` レイアウトで、ノートと設定のひな形を wheel と sdist に含めます。インストール後の実行は、このリポジトリのフォルダーに依存しません。
 - ソースの変更をすぐに反映したい場合は、`uv tool install -e . --reinstall` で editable インストールにします。

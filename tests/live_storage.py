@@ -10,7 +10,7 @@ import os
 import re
 import sys
 import tempfile
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import closing, contextmanager, redirect_stderr, redirect_stdout
 from copy import deepcopy
 from datetime import datetime, timezone
 from io import StringIO
@@ -84,10 +84,12 @@ def validate_target(target, expected_digest):
 def verify_s3_identity(target):
     """Use the dedicated profile, never injected R2 keys or a default profile."""
     session = boto3.Session(profile_name=target["profile"])
-    with session.client(
-        "sts",
-        region_name=target["region"],
-        config=SDKConfig(ignore_configured_endpoint_urls=True),
+    with closing(
+        session.client(
+            "sts",
+            region_name=target["region"],
+            config=SDKConfig(ignore_configured_endpoint_urls=True),
+        )
     ) as client:
         identity = client.get_caller_identity()
     role = target["role_arn"].split(":role/", 1)[1]
@@ -378,9 +380,9 @@ class LiveRun:
             "push dry-run keeps local and remote unchanged",
             lambda: require(snapshot(config) == before and not self.remote_keys()),
         )
-        if self.target["provider"] == "r2":
+        if self.target["provider"] in {"r2", "s3"}:
             self.check(
-                "R2 unknown-public-access confirmation",
+                f"{self.target['provider'].upper()} unknown-public-access confirmation",
                 lambda: require("confirmation" in self.command(path, "push", expected=2)["error"]),
             )
             self.check(
@@ -421,7 +423,8 @@ class LiveRun:
         from tkn_objstorage_imgcatalog.notes import urls
 
         self.check(
-            "existing generated object denies anonymous GET",
+            "existing generated object denies anonymous GET"
+            + (" with 403 AccessDenied" if self.target["provider"] == "s3" else ""),
             lambda: anonymous_denied(urls(config, relative)[0], self.target["provider"]),
         )
         self.check(
@@ -586,6 +589,8 @@ class LiveRun:
             if self.store is not None:
                 try:
                     if self.target["provider"] in {"r2", "s3"}:
+                        if self.target["provider"] == "s3":
+                            cleanup["method"] = "manifest-and-IfMatch"
                         cleaner = cleanup_s3 if self.target["provider"] == "s3" else cleanup_r2
                         cleanup["deleted"] = cleaner(
                             self.target,

@@ -67,7 +67,7 @@ def test_init_protection_and_backup(tmp_path):
     assert not path.exists()
     assert init_config(path)["status"] == "created"
     assert init_config(path)["status"] == "unchanged"
-    assert 'schema_version: "3.1.0"' in path.read_text()
+    assert 'schema_version: "3.2.0"' in path.read_text()
     path.write_text("# Edited\n" + path.read_text(), encoding="utf-8")
     with pytest.raises(ConflictError):
         init_config(path)
@@ -110,7 +110,7 @@ def test_installed_entrypoint_outside_repository(tmp_path):
         text=True,
     )
     assert completed.returncode == 0
-    assert "tkn-objstorage-imgcatalog 0.4.2" in completed.stdout
+    assert "tkn-objstorage-imgcatalog 0.5.0" in completed.stdout
 
 
 def test_cli_import_json_and_quiet(cfg, source, capsys):
