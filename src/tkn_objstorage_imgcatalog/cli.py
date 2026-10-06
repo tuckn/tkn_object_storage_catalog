@@ -17,7 +17,7 @@ from .config import flatten, init_config, legacy_root, load_config, user_root
 from .errors import AppError
 from .images import build_images, import_images
 from .migration import migrate
-from .notes import refresh_notes
+from .notes import refresh_notes, urls
 from .recovery import recover
 from .storage import open_store
 from .sync import pull, push, status, verify
@@ -89,11 +89,16 @@ def common(parser: argparse.ArgumentParser) -> None:
     group.add_argument("-v", "--verbose", action="store_true", default=argparse.SUPPRESS)
 
 
-def mutating(parser: argparse.ArgumentParser) -> None:
+def mutating(parser: argparse.ArgumentParser, *, local_only: bool = False) -> None:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="preview only: no persistent files, logs, conversion or remote writes; sync may authenticate/read/download for comparison",
+        help=(
+            "plan inputs and destinations only: no conversion, persistent writes or cloud access; "
+            "remote comparison is deferred"
+            if local_only
+            else "preview only: no persistent files, logs, conversion or remote writes; sync may authenticate/read/download for comparison"
+        ),
     )
 
 
@@ -116,19 +121,28 @@ def parser() -> argparse.ArgumentParser:
     listing = cfg.add_parser("list", help="read-only resolved settings, origins, schemas")
     common(listing)
     listing.add_argument("--json", action="store_true")
-    imp = sub.add_parser(
-        "import", help="preserve originals, prepare releases and notes; omitted input uses staging"
-    )
-    common(imp)
-    imp.add_argument("paths", nargs="*", type=Path)
-    imp.add_argument("--name", help="relative release filename for a single input")
-    imp.add_argument(
-        "--convert",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="override the selected source conversion.enabled",
-    )
-    mutating(imp)
+    for command in ("import", "upload"):
+        imp = sub.add_parser(
+            command,
+            help=(
+                "import and upload only these inputs; omitted input uses staging; "
+                "--dry-run plans locally without conversion or cloud access"
+                if command == "upload"
+                else "preserve originals, prepare releases and notes; omitted input uses staging"
+            ),
+        )
+        common(imp)
+        imp.add_argument("paths", nargs="*", type=Path)
+        imp.add_argument("--name", help="relative release filename for a single input")
+        imp.add_argument(
+            "--convert",
+            action=argparse.BooleanOptionalAction,
+            default=None,
+            help="override the selected source conversion.enabled",
+        )
+        mutating(imp, local_only=command == "upload")
+        if command == "upload":
+            imp.add_argument("--yes", action="store_true", help="skip public upload confirmation")
     build = sub.add_parser(
         "build", help="rebuild releases from retained originals with current conversion settings"
     )
@@ -190,9 +204,7 @@ def parser() -> argparse.ArgumentParser:
 
 def config_overrides(args: argparse.Namespace) -> dict[str, Any]:
     overrides = {
-        key: getattr(args, key)
-        for key in ("data_root", "state_root")
-        if hasattr(args, key)
+        key: getattr(args, key) for key in ("data_root", "state_root") if hasattr(args, key)
     }
     if getattr(args, "convert", None) is not None:
         overrides["conversion"] = {"enabled": args.convert}
@@ -275,6 +287,45 @@ def execute(args: argparse.Namespace) -> tuple[Any, int]:
                 output: Any = migrate(config, operation)
             elif args.command == "import":
                 output = import_images(config, args.paths, operation, name=args.name)
+            elif args.command == "upload":
+                imported = import_images(config, args.paths, operation, name=args.name)
+                uploaded = []
+                if args.dry_run:
+                    uploaded = [
+                        {
+                            "path": item["path"],
+                            "object_key": "/".join(
+                                x for x in (config.storage["prefix"], item["path"]) if x
+                            ),
+                            "url": urls(config, item["path"])[1],
+                            "status": "pending_remote_check",
+                        }
+                        for item in imported
+                    ]
+                elif imported:
+                    # Never pass an empty selection: push interprets it as all assets.
+                    selectors = [item["asset_id"] for item in imported]
+                    try:
+                        blobs = open_store(config)
+                        try:
+                            uploaded = push(config, selectors, operation, blobs, yes=args.yes)
+                        except AppError as exc:
+                            if "confirmation" not in str(exc) or not sys.stdin.isatty():
+                                raise
+                            print(
+                                str(exc) + " Continue? [y/N] ", file=sys.stderr, end="", flush=True
+                            )
+                            if input().strip().lower() not in {"y", "yes"}:
+                                raise AppError("Cancelled.") from exc
+                            uploaded = push(config, selectors, operation, blobs, yes=True)
+                    except (AppError, OSError, ValueError, AzureError, BotoCoreError, ClientError):
+                        LOGGER.error(
+                            "Import completed; local results are retained. Retry upload with the "
+                            "same inputs, or push --source %s with the imported asset paths.",
+                            config.source_id,
+                        )
+                        raise
+                output = {"import": imported, "upload": uploaded}
             elif args.command == "build":
                 output = build_images(config, args.assets, operation)
             elif args.command == "notes":

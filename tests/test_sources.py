@@ -406,6 +406,7 @@ def test_template_has_custom_source_id_and_valid_second_source_example(tmp_path)
 
 
 DATA_COMMANDS = [
+    ["upload"],
     ["import"],
     ["build"],
     ["push"],

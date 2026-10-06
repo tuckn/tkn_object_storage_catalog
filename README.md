@@ -256,7 +256,7 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 tkn-objstorage-imgcatalog --version
 ```
 
-`tkn-objstorage-imgcatalog 0.9.1` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-objstorage-imgcatalog 0.10.0` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
 コマンドとオプションの一覧は `tkn-objstorage-imgcatalog --help` で確認できます。
@@ -444,6 +444,36 @@ Vault と保存先の指定方法は「[5.2. Obsidian の Vault ルートと保�
 
 ### 3.2. 日常の利用
 
+**取り込みからアップロードまで一度に実行する**
+
+`upload` は原本保存・画像変換・ノート作成を行い、今回の入力に対応する画像だけを続けてアップロードします。`--source` は必須です。
+
+```shell
+# 1枚を取り込み、指定した階層へアップロードする。
+tkn-objstorage-imgcatalog upload --source my-obj-storage-1 "C:\path\to\photo.png" --name travel/kyoto/photo.webp
+
+# フォルダー内の画像を取り込んでアップロードする。
+tkn-objstorage-imgcatalog upload --source my-obj-storage-1 "C:\path\to\images"
+
+# 入力パス省略時は、この source の staging 内の画像を対象にする。
+tkn-objstorage-imgcatalog upload --source my-obj-storage-1
+
+# 取り込み対象と送信先の予定だけを確認する。
+tkn-objstorage-imgcatalog upload --source my-obj-storage-1 "C:\path\to\photo.png" --dry-run
+```
+
+`--name` は入力1枚の場合だけ使え、`--no-convert` で元の形式を維持できます。prefix と拡張子の扱いは `import` と同じです。
+入力が空ならアップロードしません。入力以外の既存アセットは対象にしません。同じ入力で再実行した場合、取り込み済みの画像を再利用します。
+公開・公開状態不明の送信は `push` と同じ確認を行い、`--yes` で確認を省略できます。競合を強制上書きするオプションは `upload` にはありません。
+
+`upload --dry-run` は変換・保存・クラウド接続を行いません。JSON の `result.import` に取り込み予定、`result.upload` にパス・オブジェクトキー・配信URLを表示します。
+送信結果の `pending_remote_check` は、クラウドとの比較が未実施であることを示します。権限・リモート競合・変換結果の検証は通常実行時に行います。
+通常実行でも `result.import` と `result.upload` に各段階の結果を返します。
+
+送信に失敗した場合や公開確認をキャンセルした場合も、完了した取り込み結果は残ります。同じ `upload` を再実行するか、取り込み済みの相対パスを指定した `push --source <id> <PATH>` で再試行できます。途中まで送信済みの画像も自動では戻しません。
+
+**取り込みとアップロードを個別に実行する**
+
 ```shell
 # フォルダーを取り込む。フォルダー内の相対的な階層を保つ。
 tkn-objstorage-imgcatalog import --source my-obj-storage-1 "C:\path\to\images"
@@ -477,8 +507,22 @@ tkn-objstorage-imgcatalog verify --source my-obj-storage-1
 | 同じ名前で内容が異なる | 停止します。`--name` で別の名前を指定します。 |
 | 同じ名前・同じ内容で、変換設定だけが変わっている | 停止します。`build` で作り直します。 |
 
-`--name photos/another.png` のように指定すると、入力が1枚のときに限り、公開用画像の相対パスを変更できます。
-WebP へ変換される場合、拡張子は `.webp` に置き換わります。
+**staging に階層を作らず、アップロード先の階層を指定する**
+
+入力が1枚の場合は、`import` の `--name` で公開用画像の相対パスを指定できます。
+例えば、`staging` 直下の `photo.png` を `travel/kyoto/photo.webp` として取り込み、アップロードするには、次のように実行します。WebP 変換が有効な場合の例です。
+`my-obj-storage-1` は設定した source ID、入力パスは実際の `staging/photo.png` の場所に置き換えます。
+
+```shell
+tkn-objstorage-imgcatalog import --source my-obj-storage-1 "C:\path\to\staging\photo.png" --name travel/kyoto/photo.webp
+tkn-objstorage-imgcatalog push --source my-obj-storage-1 travel/kyoto/photo.webp
+```
+
+取り込み後の画像は `<data_root>/releases/travel/kyoto/photo.webp` に保存されます。`staging` 内に `travel/kyoto` を作る必要はありません。
+アップロード先のコンテナー／バケット内では、`azure.prefix` または `s3.prefix` が空なら `travel/kyoto/photo.webp`、設定されていれば `<prefix>/travel/kyoto/photo.webp` になります。`--name` に prefix を重ねて指定する必要はありません。
+
+`--name` は入力画像が1枚の場合だけ使えます。WebP へ変換される場合、指定した名前の拡張子も `.webp` に置き換わります。
+変換しない場合は元の拡張子を維持し、例えば `--no-convert --name travel/kyoto/photo.png` と指定します。この場合、`push` にも `travel/kyoto/photo.png` を指定します。
 
 画像ノートは、`<data_root>/notes` の中であれば名前の変更や移動ができます。
 CLI は、ノートに記録された ID で対応するノートを見つけます。
@@ -544,6 +588,7 @@ tkn-objstorage-imgcatalog verify --source my-obj-storage-1
 | --- | --- | --- | --- |
 | 設定ファイルを作成する | `config init [--path FILE] [--force]` | なし | 設定ファイル。`--force` は、編集済みのファイルをバックアップしてから置き換えます。 |
 | 有効な設定を確認する | `config list [--json]` | なし | なし |
+| 取り込んでアップロードする | `upload --source <id> [PATH ...] [--name PATH] [--no-convert] [--yes]` | クラウドの読み取りと書き込み（dry-run は通信なし） | 原本、公開用画像、ノート、クラウド上のオブジェクト、同期の基準、実行記録 |
 | 画像を取り込む | `import --source <id> [PATH ...] [--name PATH] [--no-convert]` | なし | 原本、公開用画像、ノート、実行記録 |
 | 公開用画像を作り直す | `build --source <id> [ASSET ...]` | なし | 公開用画像、ノート、実行記録 |
 | アップロードする | `push --source <id> [ASSET ...] [--overwrite] [--yes]` | クラウドの読み取りと書き込み | クラウド上のオブジェクト、同期の基準、ノート、実行記録 |
@@ -576,7 +621,7 @@ tkn-objstorage-imgcatalog status --source my-obj-storage-1
 
 **`--dry-run`**
 
-`config init`、`import`、`build`、`push`、`pull`、`notes refresh`、`recover` で使えます。
+`config init`、`import`、`upload`、`build`、`push`、`pull`、`notes refresh`、`recover` で使えます。
 `status`、`verify`、`config list` は、もともと何も変更しません。
 
 | 項目 | `--dry-run` での動作 |
