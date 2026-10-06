@@ -109,6 +109,82 @@ flowchart LR
 既定の保存先は、ホーム フォルダー配下の `~/.tkn/objstorage-imgcatalog/` です。
 各フォルダーの役割は「[6. 保存構造](#6-保存構造)」で説明します。
 
+### 1.5. フォルダー間のデータの流れ
+
+以下は、`photo.png` を取り込み、`photo.webp` として扱う例です。
+各図は上から下へ処理が進みます。矢印は、CLI によるコピー・変換・転送を表します。
+**入力画像は移動・削除されず、`staging` に置いた画像も取り込み後に残ります。**
+
+図中のローカルフォルダーは `<data_root>/` 配下です（既定では `~/.tkn/objstorage-imgcatalog/data/<source-id>/`）。
+`notes_root` を指定した場合だけ、ノートはその指定先に保存されます。
+正常に書き込みを行う場合の流れを示し、競合による停止や `--dry-run` は省略しています。
+
+**取り込み → アップロード：`import` → `push`**
+
+```mermaid
+sequenceDiagram
+    participant Input as 入力フォルダー / staging
+    participant Originals as originals
+    participant Releases as releases
+    participant Notes as notes
+    participant Cloud as Object Storage
+
+    Note over Input,Notes: import：引数で指定した画像・フォルダーを取り込む（省略時は staging）
+    Input->>Originals: photo.png をコピー → originals/＜sha256＞/photo.png
+    Note over Input: 入力画像はそのまま残る
+    Originals->>Releases: 原本を WebP に変換 → releases/photo.webp
+    Releases->>Notes: 画像へのリンクとメタデータを生成 → notes/photo.webp.md
+    Note over Releases,Cloud: push：公開用画像をアップロード
+    Releases->>Cloud: photo.webp を送信（設定した prefix 配下）
+    Note over Originals,Releases: 原本と公開用画像はローカルに残る
+    Note over Notes: 同期結果を画像ノートに反映
+```
+
+変換対象は静止画の JPEG・PNG です。その他の対応形式や `--no-convert` の場合は、原本と同じ形式・内容を `releases` にコピーします。
+`notes` に保存するのは Markdown で、画像自体は `releases` にあります。クラウドに送るのも `releases` の画像だけです。
+
+**原本から再作成：`build`**
+
+```mermaid
+sequenceDiagram
+    participant Originals as originals
+    participant Releases as releases
+    participant History as history
+    participant Notes as notes
+
+    Note over Originals,Notes: build：変換設定を変更して公開用画像を作り直す場合
+    Releases->>History: 現在の photo.webp をコピー → history/＜旧画像のsha256＞/photo.webp
+    Originals->>Releases: 保存済みの photo.png から再作成 → releases/photo.webp を置き換え
+    Note over Originals: 原本は変更しない
+    Releases->>Notes: 画像ノートを更新
+```
+
+`build` はローカルで完結します。クラウドへ反映するには、続けて `push` を実行します。
+形式変更で拡張子が変わる場合は `build` が停止するため、`import --name` で別名として取り込みます。
+
+**クラウドから取得・復元：`pull`**
+
+```mermaid
+sequenceDiagram
+    participant Cloud as Object Storage
+    participant Releases as releases
+    participant History as history
+    participant Notes as notes
+
+    Note over Cloud,Notes: pull：新規取得・復元・更新が必要な場合
+    opt releases に置き換え前の画像がある
+        Releases->>History: 旧画像をコピー → history/＜旧画像のsha256＞/photo.webp
+    end
+    Cloud->>Releases: 変換せずに保存 → releases/photo.webp
+    Releases->>Notes: 画像ノートを作成・更新し、同期結果を反映
+```
+
+`pull` は `staging` や `originals` を経由せず、クラウドの画像を直接 `releases` に保存します。
+ダウンロードで新規取得・置き換えした画像には原本との対応がなく、`build` の対象になりません。既存の `originals` のファイル自体は残ります。
+手元とクラウドの内容が同じ場合は、画像の置き換えや `history` へのコピーは行いません。
+
+画像以外の管理情報は `catalog`・`provenance`・`state_root` に保存します。各保存先の役割は「[6. 保存構造](#6-保存構造)」を参照してください。
+
 ## 2. セットアップ
 
 ### 2.1. 前提
