@@ -68,7 +68,9 @@ def test_migrate_preview_then_apply_retains_ids_content_originals_and_sync(cfg, 
     assert (backup / "notes" / asset["note_path"]).read_bytes() == old_note
     assert (backup / "data/catalog" / (asset["asset_id"] + ".json")).read_bytes() == old_record
     result = NoteStore(cfg).assets()[0]
-    assert result == asset
+    assert {k: v for k, v in result.items() if k != "updated_at"} == {
+        k: v for k, v in asset.items() if k != "updated_at"
+    }
     assert NoteStore(cfg).baseline(result)["etag"] == "existing"
     assert [hashlib.sha256(p.read_bytes()).hexdigest() for p in (original, release)] == image_hashes
     content = note.read_text(encoding="utf-8")
@@ -175,7 +177,7 @@ def test_new_management_key_cannot_overwrite_custom_property(cfg, asset):
     data["created"] = "a user property with a different meaning"
     note.write_text(serialize(data, body), encoding="utf-8")
     before = note.read_bytes()
-    with pytest.raises(ConflictError, match="management field"):
+    with pytest.raises(AppError, match="Invalid image"):
         with Operation(cfg, "migrate", True) as operation:
             migrate(cfg, operation)
     assert note.read_bytes() == before
@@ -191,7 +193,10 @@ def test_migration_can_resume_after_new_note_was_written(cfg, asset):
     with Operation(cfg, "migrate", False) as operation:
         result = migrate(cfg, operation)
     assert result["assets"] == 1 and result["notes_updated"] == 0
-    assert NoteStore(cfg).assets()[0] == asset
+    current = NoteStore(cfg).assets()[0]
+    assert {k: v for k, v in current.items() if k != "updated_at"} == {
+        k: v for k, v in asset.items() if k != "updated_at"
+    }
 
 
 def test_migration_without_original_does_not_emit_legacy_properties(cfg, asset):

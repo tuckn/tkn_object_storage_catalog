@@ -171,7 +171,6 @@ def pull(
                 if record:
                     record = deepcopy(record)
                     record["source"] = None
-                    record["updated_at"] = now()
                     record["release"] = {
                         "sha256": remote_hash,
                         "bytes": len(content),

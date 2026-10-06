@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from .assets import NoteStore, Operation, Record
 from .config import Config
 from .errors import ConflictError
 from .io import read_json, sha256, within
+
+
+def release_time(record: Record) -> datetime:
+    # Recovery ordering concerns image versions, not edits to their notes.
+    return datetime.fromisoformat(record["release"].get("generated_at", record["updated_at"]))
 
 
 def recover(config: Config, operation: Operation) -> list[Record]:
@@ -18,12 +25,12 @@ def recover(config: Config, operation: Operation) -> list[Record]:
             if event["action"] == "release_prepared" and "record" in event:
                 record = event["record"]
                 previous = candidates.get(record["asset_id"])
-                if previous is None or previous["updated_at"] < record["updated_at"]:
+                if previous is None or release_time(previous) < release_time(record):
                     candidates[record["asset_id"]] = record
     result = []
     for asset_id, prepared in candidates.items():
         current = existing.get(asset_id)
-        if current and current["updated_at"] > prepared["updated_at"]:
+        if current and release_time(current) > release_time(prepared):
             continue
         target = store.release(prepared)
         if not target.exists() or sha256(target) != prepared["release"]["sha256"]:

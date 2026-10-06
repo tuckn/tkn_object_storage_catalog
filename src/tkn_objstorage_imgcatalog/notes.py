@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import datetime
 from io import StringIO
 from pathlib import Path
 from string import Template
@@ -15,7 +16,7 @@ from ruamel.yaml.error import YAMLError
 from .assets import NOTE_SCHEMA_VERSION, NoteStore, Record
 from .config import Config, resource
 from .errors import AppError, ConflictError
-from .io import atomic_bytes, sha256, within
+from .io import atomic_bytes, now, sha256, within
 from .note_template import format_frontmatter, note_template
 
 # Keep the persisted markers stable across CLI/package renames.
@@ -123,7 +124,6 @@ def render_note(
     blob, url = urls(config, record["relative_path"])
     managed: dict[str, Any] = {
         "schemaVersion": NOTE_SCHEMA_VERSION,
-        "created": record["created_at"],
         "conversionRecipe": record["release"].get("recipe"),
         "releaseGeneratedAt": record["release"].get("generated_at", record["updated_at"]),
         "sourceCapturedAt": source.get("captured_at", record["created_at"]) if source else None,
@@ -143,7 +143,6 @@ def render_note(
         "objectUrl": blob,
         "url": url,
         "cover": "releases/" + record["relative_path"],
-        "updated": record["updated_at"],
     }
     if sync_status:
         managed["syncStatus"] = sync_status
@@ -183,7 +182,19 @@ def render_note(
         body = body[: body.index(BEGIN)] + generated + body[body.index(END) + len(END) :]
     else:
         body = body.rstrip("\n") + "\n\n" + generated + "\n"
-    return format_frontmatter(data) + "\n" + body.lstrip("\r\n")
+    # Note dates are independent of source/release lifecycle timestamps.
+    if existing is None:
+        stamp = now()
+        data["created"] = stamp
+        data["updated"] = stamp
+    else:
+        data.setdefault("created", record["created_at"])
+        data.setdefault("updated", record["updated_at"])
+    rendered = format_frontmatter(data) + "\n" + body.lstrip("\r\n")
+    if existing is not None and rendered != existing:
+        data["updated"] = now()
+        rendered = format_frontmatter(data) + "\n" + body.lstrip("\r\n")
+    return rendered
 
 
 def format_existing_note(text: str) -> str:
@@ -210,6 +221,10 @@ def refresh_note(
         return "unchanged"
     if not dry_run:
         atomic_bytes(path, text.encode(), expected=before, create_only=existing is None)
+        saved, _ = split_note(text)
+        for field, key in (("created", "created_at"), ("updated", "updated_at")):
+            value = saved[field]
+            record[key] = value.isoformat() if isinstance(value, datetime) else value
     return "updated" if existing is not None else "created"
 
 

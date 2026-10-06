@@ -80,7 +80,6 @@ def migrate(config: Config, operation: Operation) -> Record:
                 "note_id",
                 "relative_path",
                 "created_at",
-                "updated_at",
                 "source",
                 "release",
             ):

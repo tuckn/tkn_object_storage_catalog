@@ -43,7 +43,13 @@ def test_template_reordering_controls_existing_and_generated_notes(cfg, asset, m
     refresh_notes(cfg, [])
     refreshed = note.read_text(encoding="utf-8")
     assert refreshed.index("bytes:") < refreshed.index("sha256:")
-    assert refreshed == existing
+    before, body = split_note(existing)
+    after, new_body = split_note(refreshed)
+    assert body == new_body
+    assert {k: v for k, v in after.items() if k != "updated"} == {
+        k: v for k, v in before.items() if k != "updated"
+    }
+    assert after["updated"] != before["updated"]
 
 
 def test_formatting_retains_values_comments_custom_properties_and_body(cfg, asset):

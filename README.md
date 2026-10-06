@@ -64,6 +64,8 @@ noteId: <note-id>
 `assetId`、`url`、`syncStatus` など、および `object-storage-catalog:begin` から `object-storage-catalog:end` までのブロックは、CLI が更新します。
 CLI は、利用者が編集した項目、独自に追加したプロパティ、ブロック外の本文を保持します。
 
+`created` はノートの新規作成日時、`updated` はCLIがFrontmatterまたは本文を実際に変更した日時です。変更なし・確認のみ・dry-runでは更新しません。画像側の日時は `sourceCapturedAt`（原本の取り込み）と `releaseGeneratedAt`（公開用画像の生成・取得）で管理します。手動編集時の `updated` は利用者またはObsidian側で更新します。詳しくは[ノートと画像の日時](docs/reference/contracts.md#ノートと画像の日時)を参照してください。
+
 Frontmatter の項目順・英語の区切りコメント・本文の雛形は [resources/note.md](src/tkn_objstorage_imgcatalog/resources/note.md) で管理します。順番を変更する場合は、このファイル内の `key:` 行または空行で区切ったまとまりを移動します。Python コードの変更は不要です。
 
 - 既定の順番は、共通項目 → 画像ID → 原本・取得元 → 公開用画像・生成情報 → ストレージ・同期 → 既存の公開情報 → `tags`・`created`・`updated`・`noteId` です。
@@ -256,7 +258,7 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 tkn-objstorage-imgcatalog --version
 ```
 
-`tkn-objstorage-imgcatalog 0.10.0` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-objstorage-imgcatalog 0.11.0` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
 コマンドとオプションの一覧は `tkn-objstorage-imgcatalog --help` で確認できます。
@@ -367,61 +369,125 @@ S3 と R2 では同じ `s3` 設定ブロックを使います。`provider` に�
 
 ### 3.1. 最初の実行と結果確認
 
-データを変更するコマンドは、`--dry-run` を付けると、何も変更せずに実行内容だけを表示します。
-`--dry-run` の詳しい動作は「[4.1. 共通の動作](#41-共通の動作)」で説明します。
+**1. 画像を取り込んで、そのままアップロードします。**
 
-**1. 画像を取り込みます。**
-
-`C:\path\to\photo.png` は、実在する画像のパスに置き換えます。
-`my-obj-storage-1` は設定した source ID に置き換えます。source が1件でも指定が必要です。
+`upload` は、原本保存・画像変換・ノート作成からクラウドへの送信までを1コマンドで実行します。
 
 ```shell
-tkn-objstorage-imgcatalog import --source my-obj-storage-1 "C:\path\to\photo.png"
+tkn-objstorage-imgcatalog upload --source my-obj-storage-1 "C:\path\to\photo.png" --name travel/kyoto/photo.webp
 ```
 
-原本が `originals/<sha256>/` に保存され、公開用画像 `releases/photo.webp` と画像ノート `notes/photo.webp.md` が作成されます。
-入力したファイルは、削除も移動もされません。
-結果は次のような JSON で表示されます（説明用の例）。
+`my-obj-storage-1` は設定した source ID、入力パスは実在する画像の場所に置き換えます。source が1件でも指定が必要です。
+この例は WebP 変換が有効な場合です。`--name` は入力1枚のときに使え、保存先の相対パスを指定します。入力側に `travel/kyoto` のフォルダーを作る必要はありません。
+
+実行すると、次の画像とノートが作成されます。
+
+| 保存先 | この例の結果 |
+| --- | --- |
+| 手元の原本 | `<data_root>/originals/<sha256>/photo.png` |
+| 手元の公開用画像 | `<data_root>/releases/travel/kyoto/photo.webp` |
+| 画像ノート | `<data_root>/notes/travel/kyoto/photo.webp.md` |
+| クラウドのコンテナー／バケット | `travel/kyoto/photo.webp`。prefix 設定時は `<prefix>/travel/kyoto/photo.webp` |
+
+入力ファイルは削除も移動もされません。送信対象は今回の入力に対応する画像だけです。
+
+**upload のフロー**
+
+```mermaid
+flowchart TD
+    Input["入力画像・フォルダー<br/>入力パス省略時は選択した source の staging"] --> Validate["source・入力・保存先を検証"]
+    Validate --> Preview{"--dry-run?"}
+    Preview -->|はい| Plan["取り込み対象と送信先の予定を表示<br/>変換・保存・通信なし"]
+    Preview -->|いいえ| Import["原本保存 → 画像変換 → ノート作成<br/>同じ入力の取り込み済み画像は再利用"]
+    Import --> Targets{"今回の対象画像がある?"}
+    Targets -->|いいえ| Empty["送信せず終了"]
+    Targets -->|はい| Compare["クラウドと比較・競合検査<br/>必要に応じて公開確認"]
+    Compare --> Send["今回の対象画像だけをアップロード<br/>同じ内容なら送信を省略"]
+    Send --> Record["同期の基準・ノート・実行記録を更新"]
+    Compare -->|競合・接続失敗・キャンセル| Retain["完了した取り込み結果を保持<br/>同じ upload または対象指定の push で再試行"]
+    Send -->|送信失敗| Retain
+```
+
+**upload のシーケンス（通常実行）**
+
+```mermaid
+sequenceDiagram
+    actor User as 利用者
+    participant CLI as upload
+    participant Input as 入力画像 / staging
+    participant Local as originals / releases / notes
+    participant Cloud as Object Storage
+    participant State as state
+
+    User->>CLI: upload --source ID PATH --name travel/kyoto/photo.webp
+    CLI->>Input: 入力を読み取り・検証
+    CLI->>Local: 原本保存・画像変換・ノート作成
+    Note over CLI,Local: 同じ入力の取り込み済み画像は再利用
+    alt 対象画像がない
+        CLI-->>User: 送信せず終了
+    else 対象画像がある
+        CLI->>Cloud: 今回の対象とリモートを比較・競合検査
+        opt 公開確認が必要（--yes なし）
+            CLI-->>User: 送信の確認
+            User->>CLI: 続行
+        end
+        CLI->>Cloud: 今回の対象だけ送信（同じ内容なら省略）
+        Cloud-->>CLI: 同期結果
+        CLI->>State: 同期の基準・実行記録を保存
+        CLI->>Local: ノートの同期状態を更新
+        CLI-->>User: 取り込み結果と送信結果を JSON で表示
+    end
+    Note over CLI,State: 送信失敗・確認キャンセル後も完了した取り込み結果を保持
+```
+
+結果は次のような JSON で表示されます（新規画像を取り込んで送信した場合の説明用の例）。
 
 ```json
 {
-  "command": "import",
+  "command": "upload",
   "source_id": "my-obj-storage-1",
   "dry_run": false,
   "run_id": "<run-id>",
-  "result": [
-    {
-      "status": "created",
-      "path": "photo.webp",
-      "source_sha256": "<sha256>",
-      "conversion": "webp",
-      "asset_id": "<asset-id>"
-    }
-  ]
+  "result": {
+    "import": [
+      {
+        "status": "created",
+        "path": "travel/kyoto/photo.webp",
+        "source_sha256": "<sha256>",
+        "conversion": "webp",
+        "asset_id": "<asset-id>"
+      }
+    ],
+    "upload": [
+      {
+        "asset_id": "<asset-id>",
+        "path": "travel/kyoto/photo.webp",
+        "status": "created"
+      }
+    ]
+  }
 }
 ```
 
-`status` が `created` で、`path` に公開用画像の相対パスが表示されていれば、取り込みは完了しています。
-`conversion` は、WebP へ変換した場合は `webp`、変換せずにコピーした場合は `copy` です。
-
-JPEG や PNG を変換せずに取り込むには、`import --no-convert` を使うか、設定で `conversion.enabled: false` を指定します。
-
-**2. アップロードの内容を確認してから、アップロードします。**
-
-```shell
-tkn-objstorage-imgcatalog push --source my-obj-storage-1 photo.webp --dry-run
-tkn-objstorage-imgcatalog push --source my-obj-storage-1 photo.webp
-```
+`result.import` が取り込み結果、`result.upload` がクラウドへの送信結果です。上の例では両方が `created` なので、取り込みと新規アップロードが完了しています。
+同じ入力で再実行すると取り込み済みの画像を再利用し、クラウドにも同じ内容があれば送信結果は `unchanged` になります。
+変換を省略する場合は `--no-convert --name travel/kyoto/photo.png` のように元の拡張子を維持します。
 
 > [!IMPORTANT]
-> `push` は、設定したコンテナー／バケットとプレフィックスの範囲へ画像を送信します。
-> Azure では匿名公開・公開状態不明・`$web`・配信 URL 設定済みの場合に確認を求めます。S3/R2 では公開経路を網羅して判定できないため、変更を伴うアップロードで常に確認を求めます。
-> 対話できない環境（スケジュール実行など）で意図して公開アップロードを行うときは、`--yes` を付けます。
+> 公開・公開状態不明のアップロードでは確認を求めます。Azure では匿名公開・公開状態不明・`$web`・配信 URL 設定済みの場合、S3/R2 では変更を伴うアップロードで確認が必要です。
+> 対話できない環境で意図して送信するときは `--yes` を付けます。
 
-`--dry-run` もクラウドに接続し、認証とオブジェクトの読み取りを行います。
-クラウドの読み取り操作には、サービスの料金が発生する場合があります。
+実行前に取り込み対象と送信先の予定を確認したい場合は、同じコマンドに `--dry-run` を付けます。
 
-**3. クラウド上の画像が手元と一致することを確認します。**
+```shell
+tkn-objstorage-imgcatalog upload --source my-obj-storage-1 "C:\path\to\photo.png" --name travel/kyoto/photo.webp --dry-run
+```
+
+`upload --dry-run` は変換・保存・クラウド接続を行いません。送信結果の `pending_remote_check` はクラウドとの比較が未実施であることを示し、権限・リモート競合・変換結果は通常実行時に検証します。
+送信失敗や確認キャンセルの場合も完了した取り込み結果は残り、同じ `upload` または対象を指定した `push` で再試行できます。
+詳しい動作は「[4.1. 共通の動作](#41-共通の動作)」も参照してください。
+
+**2. クラウド上の画像が手元と一致することを確認します。**
 
 ```shell
 tkn-objstorage-imgcatalog verify --source my-obj-storage-1 --remote
@@ -430,7 +496,7 @@ tkn-objstorage-imgcatalog verify --source my-obj-storage-1 --remote
 表示された JSON の `valid` が `true` であれば、手元の画像、原本、画像ノート、クラウド上の画像に不整合はありません。
 `false` の場合は、各項目の `issues` に理由が表示され、終了コードは 2 になります。
 
-**4. Obsidian でノートを開きます（任意）。**
+**3. Obsidian でノートを開きます（任意）。**
 
 **`data_root` そのものを Obsidian の Vault ルートとして開きます。** 既定では `~/.tkn/objstorage-imgcatalog/data/my-obj-storage-1` です。その中の `notes` フォルダーからノートを開きます。
 
@@ -444,33 +510,21 @@ Vault と保存先の指定方法は「[5.2. Obsidian の Vault ルートと保�
 
 ### 3.2. 日常の利用
 
-**取り込みからアップロードまで一度に実行する**
+**フォルダーや staging をまとめてアップロードする**
 
-`upload` は原本保存・画像変換・ノート作成を行い、今回の入力に対応する画像だけを続けてアップロードします。`--source` は必須です。
+最初の例と同じ `upload` で、フォルダー内の複数画像も扱えます。
 
 ```shell
-# 1枚を取り込み、指定した階層へアップロードする。
-tkn-objstorage-imgcatalog upload --source my-obj-storage-1 "C:\path\to\photo.png" --name travel/kyoto/photo.webp
-
-# フォルダー内の画像を取り込んでアップロードする。
+# フォルダー内の相対的な階層を保って、取り込みから送信まで実行する。
 tkn-objstorage-imgcatalog upload --source my-obj-storage-1 "C:\path\to\images"
 
 # 入力パス省略時は、この source の staging 内の画像を対象にする。
 tkn-objstorage-imgcatalog upload --source my-obj-storage-1
-
-# 取り込み対象と送信先の予定だけを確認する。
-tkn-objstorage-imgcatalog upload --source my-obj-storage-1 "C:\path\to\photo.png" --dry-run
 ```
 
-`--name` は入力1枚の場合だけ使え、`--no-convert` で元の形式を維持できます。prefix と拡張子の扱いは `import` と同じです。
-入力が空ならアップロードしません。入力以外の既存アセットは対象にしません。同じ入力で再実行した場合、取り込み済みの画像を再利用します。
-公開・公開状態不明の送信は `push` と同じ確認を行い、`--yes` で確認を省略できます。競合を強制上書きするオプションは `upload` にはありません。
-
-`upload --dry-run` は変換・保存・クラウド接続を行いません。JSON の `result.import` に取り込み予定、`result.upload` にパス・オブジェクトキー・配信URLを表示します。
-送信結果の `pending_remote_check` は、クラウドとの比較が未実施であることを示します。権限・リモート競合・変換結果の検証は通常実行時に行います。
-通常実行でも `result.import` と `result.upload` に各段階の結果を返します。
-
-送信に失敗した場合や公開確認をキャンセルした場合も、完了した取り込み結果は残ります。同じ `upload` を再実行するか、取り込み済みの相対パスを指定した `push --source <id> <PATH>` で再試行できます。途中まで送信済みの画像も自動では戻しません。
+入力が空ならアップロードしません。入力以外の既存アセットは対象にしません。`--name` は入力1枚の場合だけ使えます。
+`upload` に競合を強制上書きするオプションはありません。競合時は「[3.3. 手元とクラウド の内容が食い違ったとき](#33-手元とクラウド-の内容が食い違ったとき)」に従い、対象を指定した `push` で解決します。
+途中まで送信済みの画像も自動では戻しません。
 
 **取り込みとアップロードを個別に実行する**
 

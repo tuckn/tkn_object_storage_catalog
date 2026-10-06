@@ -224,7 +224,6 @@ def build_images(config: Config, selectors: list[str], operation: Operation) -> 
                 generated_at=now(),
             )
             updated["release"]["entity_id"] = "urn:sha256:" + updated["release"]["sha256"]
-            updated["updated_at"] = now()
             operation.event("release_prepared", record=updated)
             atomic_bytes(store.release(record), content, expected=record["release"]["sha256"])
             store.save(updated, sync_status="local")
