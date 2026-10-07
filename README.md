@@ -664,6 +664,7 @@ JSON には `source_id` と `diagnostics`（`provider`、`error_type`、取得�
 
 通常の `pull`・`push`・`upload` で発生した AWS S3 または Cloudflare R2 の失敗は、接続準備中のものも含め、`<state_root>/runs/<run_id>.json` と `<state_root>/logs/<run_id>.log` に同じ診断情報を保存します。
 `runs` は構造化した診断情報、`logs` は画面と同じエラーメッセージを保持します。
+保存済みの記録は、エラーメッセージに続けて `run_file`・`log_file` の絶対パスを表示します。JSON にも `error_files` として同じパスを含めるため、エラー出力から記録を開けます。記録を保存しない実行では `error_files` は空のオブジェクトです。
 `--dry-run`、読み取り専用の `status`・`verify`、設定検証・ロック取得・記録先の準備が完了する前の失敗は、実行記録を作成しません。
 `~/.local/cache` には、このツールのエラー記録を保存しません。
 保存先は `tkn-objstorage-imgcatalog config list --source <id>` の `state_root` で確認できます。

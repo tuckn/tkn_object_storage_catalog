@@ -95,6 +95,13 @@ def test_failure_is_recorded_and_matches_console(
     assert run["provider"] == provider
     assert run["diagnostics"] == payload["diagnostics"]
     assert run["error"] == payload["error"]
+    assert payload["error_files"] == {
+        "run_file": str(runs[0].resolve()),
+        "log_file": str((isolated / "state/logs" / (run["run_id"] + ".log")).resolve()),
+    }
+    for file_path in payload["error_files"].values():
+        assert Path(file_path).is_file()
+        assert file_path in output.err
     log = (isolated / "state/logs" / (run["run_id"] + ".log")).read_text(encoding="utf-8")
     assert payload["error"] in log
     assert output.err.count("[ERROR]") == 1
@@ -114,6 +121,7 @@ def test_readonly_failures_do_not_persist(isolated, monkeypatch, capsys, command
     payload = json.loads(capsys.readouterr().out)
     assert payload["diagnostics"]["error_type"] == "NoCredentialsError"
     assert "R2 Access Key" in payload["error"]
+    assert payload["error_files"] == {}
     assert not (isolated / "data").exists()
     assert not (isolated / "state").exists()
     assert not (isolated / "home").exists()
@@ -160,3 +168,21 @@ def test_connection_failure_before_first_request_is_persisted(isolated, monkeypa
     assert run["diagnostics"] == payload["diagnostics"]
     assert run["error_type"] == "ProfileNotFound"
     assert run["events"] == []
+
+
+def test_error_files_belong_to_current_run_and_are_empty_on_dry_run(isolated, monkeypatch, capsys):
+    path = config_path(isolated, "r2")
+    monkeypatch.setattr(cli, "open_store", Mock(side_effect=NoCredentialsError()))
+    args = ["pull", "--source", "images", "--config", str(path)]
+    paths = []
+    for _ in range(2):
+        assert cli.main(args) == 3
+        result = json.loads(capsys.readouterr().out)
+        paths.append(result["error_files"]["run_file"])
+    assert paths[0] != paths[1]
+    before = {p: p.read_bytes() for p in (isolated / "state").rglob("*") if p.is_file()}
+    assert cli.main([*args, "--dry-run"]) == 3
+    output = capsys.readouterr()
+    assert json.loads(output.out)["error_files"] == {}
+    assert "run_file:" not in output.err
+    assert before == {p: p.read_bytes() for p in (isolated / "state").rglob("*") if p.is_file()}

@@ -258,16 +258,26 @@ def execute(args: argparse.Namespace) -> tuple[Any, int]:
         return None, 0
     config = config.select_source()
     ensure_current_layout(config)
+    operation = (
+        None
+        if args.command in {"status", "verify"}
+        else Operation(config, args.command, args.dry_run)
+    )
     try:
-        return execute_source(args, config)
+        return execute_source(args, config, operation)
     except (BotoCoreError, ClientError) as exc:
         details = storage_diagnostic(exc, config.provider)
         assert details is not None
         assert config.source_id is not None
-        raise StorageRequestError(details, config.source_id) from exc
+        error_files = operation.saved_error_files() if operation is not None else {}
+        raise StorageRequestError(details, config.source_id, error_files) from exc
 
 
-def execute_source(args: argparse.Namespace, config: Config) -> tuple[Any, int]:
+def execute_source(
+    args: argparse.Namespace,
+    config: Config,
+    operation: Operation | None,
+) -> tuple[Any, int]:
     remote = args.command in {"push", "pull"} or getattr(args, "remote", False)
     blobs = None
     try:
@@ -282,7 +292,8 @@ def execute_source(args: argparse.Namespace, config: Config) -> tuple[Any, int]:
                 "items": items,
                 "valid": not any(i["status"] == "failed" for i in items),
             }, (2 if any(i["status"] == "failed" for i in items) else 0)
-        with Operation(config, args.command, args.dry_run) as operation:
+        assert operation is not None
+        with operation:
             LOGGER.info(
                 "%s%s (source %s)",
                 "Previewing " if args.dry_run else "Running ",
@@ -405,7 +416,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps({"status": "failed", "error": message}))
         return 3
     except StorageRequestError as exc:
-        LOGGER.error("%s", exc)
+        locations = "".join(f"\n{label}: {path}" for label, path in exc.error_files.items())
+        LOGGER.error("%s%s", exc, locations)
         print(
             json.dumps(
                 {
@@ -413,6 +425,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "error": str(exc),
                     "source_id": exc.source_id,
                     "diagnostics": exc.details,
+                    "error_files": exc.error_files,
                 }
             )
         )

@@ -150,7 +150,13 @@ def diagnostic_message(details: dict[str, Any]) -> str:
 
 
 class StorageRequestError(Exception):
-    def __init__(self, details: dict[str, Any], source_id: str):
+    def __init__(
+        self,
+        details: dict[str, Any],
+        source_id: str,
+        error_files: dict[str, str],
+    ):
         super().__init__(diagnostic_message(details))
         self.details = details
         self.source_id = source_id
+        self.error_files = error_files

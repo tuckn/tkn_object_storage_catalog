@@ -352,6 +352,16 @@ class Operation(AbstractContextManager["Operation"]):
         self.value["events"].append({"action": action, "at": now(), **details})
         self.flush()
 
+    def saved_error_files(self) -> dict[str, str]:
+        """Report only this failed run's existing records, never a guessed latest run."""
+        if self.dry_run or self.value["status"] != "failed":
+            return {}
+        candidates = {
+            "run_file": self.config.state_root / "runs" / (self.run_id + ".json"),
+            "log_file": self.config.state_root / "logs" / (self.run_id + ".log"),
+        }
+        return {key: str(path.resolve()) for key, path in candidates.items() if path.is_file()}
+
     def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
         try:
             self.value["status"] = "failed" if exc else "completed"
