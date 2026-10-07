@@ -13,7 +13,8 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from . import __version__
 from .assets import Operation, ensure_current_layout
-from .config import flatten, init_config, legacy_root, load_config, user_root
+from .config import Config, flatten, init_config, legacy_root, load_config, user_root
+from .diagnostics import StorageRequestError, storage_diagnostic
 from .errors import AppError
 from .images import build_images, import_images
 from .notes import refresh_notes, urls
@@ -257,9 +258,21 @@ def execute(args: argparse.Namespace) -> tuple[Any, int]:
         return None, 0
     config = config.select_source()
     ensure_current_layout(config)
-    remote = args.command in {"push", "pull"} or getattr(args, "remote", False)
-    blobs = open_store(config) if remote else None
     try:
+        return execute_source(args, config)
+    except (BotoCoreError, ClientError) as exc:
+        details = storage_diagnostic(exc, config.provider)
+        assert details is not None
+        assert config.source_id is not None
+        raise StorageRequestError(details, config.source_id) from exc
+
+
+def execute_source(args: argparse.Namespace, config: Config) -> tuple[Any, int]:
+    remote = args.command in {"push", "pull"} or getattr(args, "remote", False)
+    blobs = None
+    try:
+        if args.command in {"status", "verify"} and remote:
+            blobs = open_store(config)
         if args.command == "status":
             return {"source_id": config.source_id, "items": status(config, blobs=blobs)}, 0
         if args.command == "verify":
@@ -276,6 +289,8 @@ def execute(args: argparse.Namespace) -> tuple[Any, int]:
                 args.command,
                 config.source_id,
             )
+            if remote:
+                blobs = open_store(config)
             if args.command == "import":
                 output: Any = import_images(config, args.paths, operation, name=args.name)
             elif args.command == "upload":
@@ -389,15 +404,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         LOGGER.error("%s", message)
         print(json.dumps({"status": "failed", "error": message}))
         return 3
-    except (BotoCoreError, ClientError) as exc:
-        # Do not render SDK exception text: it may contain endpoints or credentials.
-        message = "S3/R2 request failed. Check the selected profile/environment credentials, endpoint, region, permissions, and network connectivity."
-        if isinstance(exc, ClientError) and exc.response.get("ResponseMetadata", {}).get(
-            "HTTPStatusCode"
-        ) in {409, 412}:
-            message = "S3/R2 changed during the operation. Inspect status --remote and retry after resolving the conflict."
-        LOGGER.error("%s", message)
-        print(json.dumps({"status": "failed", "error": message}))
+    except StorageRequestError as exc:
+        LOGGER.error("%s", exc)
+        print(
+            json.dumps(
+                {
+                    "status": "failed",
+                    "error": str(exc),
+                    "source_id": exc.source_id,
+                    "diagnostics": exc.details,
+                }
+            )
+        )
         return 3
 
 

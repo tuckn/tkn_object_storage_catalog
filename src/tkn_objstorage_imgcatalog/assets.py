@@ -11,6 +11,7 @@ from filelock import FileLock, Timeout
 
 from . import __version__
 from .config import Config
+from .diagnostics import diagnostic_message, storage_diagnostic
 from .errors import AppError, ConflictError
 from .io import (
     SCHEMA_VERSION,
@@ -32,7 +33,9 @@ def ensure_current_layout(config: Config) -> None:
     for name in ("catalog", "provenance"):
         folder = within(config.data_root, name)
         if folder.exists() and (not folder.is_dir() or any(folder.iterdir())):
-            raise AppError("Old storage layout is not supported. Use a separate data_root for the current layout.")
+            raise AppError(
+                "Old storage layout is not supported. Use a separate data_root for the current layout."
+            )
 
 
 def validate_record(config: Config, item: Record) -> None:
@@ -313,6 +316,7 @@ class Operation(AbstractContextManager["Operation"]):
             "status": "running",
             "events": [],
             "source_id": config.select_source().source_id,
+            "provider": config.provider,
             "config_fingerprint": fingerprint(config.source_values),
         }
 
@@ -354,6 +358,24 @@ class Operation(AbstractContextManager["Operation"]):
             self.value["ended_at"] = now()
             if exc:
                 self.value["error_type"] = type(exc).__name__
+                details = storage_diagnostic(exc, self.config.provider)
+                if details is not None:
+                    self.value["diagnostics"] = details
+                    self.value["error"] = diagnostic_message(details)
+                    if self.handler:
+                        # The CLI emits the console error after this handler closes.
+                        # Persist the same safe message here without printing it twice.
+                        self.handler.handle(
+                            logging.LogRecord(
+                                "tkn_objstorage_imgcatalog",
+                                logging.ERROR,
+                                __file__,
+                                0,
+                                self.value["error"],
+                                (),
+                                None,
+                            )
+                        )
             self.flush()
         finally:
             if self.handler:

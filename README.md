@@ -657,6 +657,17 @@ source が1つでも、データを扱うすべてのコマンドに `--source <
 `--quiet` はメッセージをエラーだけに絞り、`--verbose` は詳細なメッセージを加えます。
 この2つは同時に指定できません。
 
+AWS S3 と Cloudflare R2 の失敗は、選択した provider の名前で表示します。
+JSON には `source_id` と `diagnostics`（`provider`、`error_type`、取得できた `http_status`、既知の `error_code`・`operation`、対処の手掛かり `hint`）も含みます。
+たとえば Cloudflare R2 の `AccessDenied` は、R2 API トークンの権限と対象バケットを確認する案内になります。
+認証情報、エンドポイントを含み得る SDK の例外本文・応答本文は、`--verbose` でも表示・保存しません。未知のサービスエラーコードは `Unknown` とします。
+
+通常の `pull`・`push`・`upload` で発生した AWS S3 または Cloudflare R2 の失敗は、接続準備中のものも含め、`<state_root>/runs/<run_id>.json` と `<state_root>/logs/<run_id>.log` に同じ診断情報を保存します。
+`runs` は構造化した診断情報、`logs` は画面と同じエラーメッセージを保持します。
+`--dry-run`、読み取り専用の `status`・`verify`、設定検証・ロック取得・記録先の準備が完了する前の失敗は、実行記録を作成しません。
+`~/.local/cache` には、このツールのエラー記録を保存しません。
+保存先は `tkn-objstorage-imgcatalog config list --source <id>` の `state_root` で確認できます。
+
 **終了コード**
 
 | 終了コード | 意味 |

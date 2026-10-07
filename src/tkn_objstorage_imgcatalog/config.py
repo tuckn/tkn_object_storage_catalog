@@ -111,7 +111,8 @@ def validate_part(value: dict[str, Any], defaults: dict[str, Any], label: str) -
             or ".." in bucket
             or re.fullmatch(r"\d+\.\d+\.\d+\.\d+", bucket)
         ):
-            raise AppError(f"{label}: invalid S3/R2 bucket name.")
+            service = "Cloudflare R2" if value.get("provider") == "r2" else "AWS S3"
+            raise AppError(f"{label}: invalid {service} bucket name (s3.bucket).")
         for key in ("profile", "region"):
             if s.get(key) is not None and not s[key].strip():
                 raise AppError(f"{label}: s3.{key} must not be empty.")

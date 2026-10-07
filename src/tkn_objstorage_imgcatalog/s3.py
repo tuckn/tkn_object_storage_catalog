@@ -15,6 +15,7 @@ from botocore.exceptions import ClientError
 
 from .assets import Record
 from .config import Config
+from .diagnostics import SERVICE_NAMES
 from .errors import AppError, ConflictError
 from .io import IMAGE_EXTENSIONS, safe_relative
 
@@ -27,7 +28,9 @@ class S3Objects:
         self.config = config
         settings = config.s3
         if not settings["bucket"]:
-            raise AppError("Set s3.bucket in the selected source before connecting.")
+            raise AppError(
+                f"{SERVICE_NAMES[config.provider]}: Set s3.bucket in the selected source before connecting."
+            )
         if config.provider == "r2" and not settings["endpoint_url"]:
             raise AppError("Set s3.endpoint_url to the R2 account S3 API endpoint.")
         self.bucket = settings["bucket"]
@@ -131,7 +134,8 @@ class S3Objects:
     def validate_upload(self, source: Path) -> None:
         if source.stat().st_size > MAX_UPLOAD_BYTES:
             raise AppError(
-                "S3/R2 uploads support at most 5,000,000,000 bytes per image (single PUT)."
+                f"{SERVICE_NAMES[self.config.provider]} uploads support at most "
+                "5,000,000,000 bytes per image (single PUT)."
             )
 
     def upload(
