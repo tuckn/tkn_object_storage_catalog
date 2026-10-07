@@ -201,7 +201,7 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 tkn-objstorage-imgcatalog --version
 ```
 
-`tkn-objstorage-imgcatalog 0.11.1` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-objstorage-imgcatalog 0.12.0` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
 コマンドとオプションの一覧は `tkn-objstorage-imgcatalog --help` で確認できます。
@@ -617,7 +617,6 @@ tkn-objstorage-imgcatalog verify --source my-obj-storage-1
 | 状態を確認する | `status --source <id> [--remote]` | `--remote` のときクラウドの一覧取得 | なし |
 | 整合性を検査する | `verify --source <id> [--remote]` | `--remote` のときクラウドから内容を読み取り | なし |
 | 中断した処理を完了させる | `recover --source <id>` | なし | ノート、実行記録 |
-| 旧保存構造を移行する | `migrate --source <id>` | なし | ノート、実行記録、移行前の控え。移行済みの旧 JSON を削除します。 |
 
 `--convert` / `--no-convert` は、設定の `conversion.enabled` をその実行だけ上書きします。
 各コマンドの引数とオプションは、`tkn-objstorage-imgcatalog <command> --help` で確認できます。
@@ -636,7 +635,7 @@ source が1つでも、データを扱うすべてのコマンドに `--source <
 
 **`--dry-run`**
 
-`config init`、`import`、`upload`、`build`、`push`、`pull`、`notes refresh`、`recover`、`migrate` で使えます。
+`config init`、`import`、`upload`、`build`、`push`、`pull`、`notes refresh`、`recover` で使えます。
 `status`、`verify`、`config list` は、もともと何も変更しません。
 
 | 項目 | `--dry-run` での動作 |
@@ -754,7 +753,6 @@ sources:
 - ノートの保存先は `<data_root>/notes` に固定です。設定キー `notes_root` と `--notes-root` は指定できません。
 - `.obsidian` は Obsidian が設定の保存用に管理するフォルダーで、CLI は作成しません。Obsidian の利用は任意です。
 
-設定に `notes_root` が残っている場合の対応は「[9.3. 旧設定の notes_root を取り除く](#93-旧設定の-notes_root-を取り除く)」を参照します。
 
 ### 6.3. 複数の接続先を管理する
 
@@ -846,7 +844,7 @@ tkn-objstorage-imgcatalog notes refresh --source my-obj-storage-1
 | `data/<source-id>/originals/<sha256>/` | 取り込んだ原本。変更されません。 | 再作成できません。`build` で作り直せなくなります。 |
 | `data/<source-id>/releases/` | オブジェクトキーに対応する、現在の公開用画像 | 同期済みであれば `pull` で復元できます。 |
 | `data/<source-id>/notes/` | 画像の管理情報・説明・関連をまとめたノートと、Obsidian Bases のビュー | 画像 ID・原本との対応・変換条件の指紋・説明・本文を失います。バックアップから復元します。 |
-| `state/<source-id>/` | 同期の基準（`sync`）、実行・復旧の記録（`runs`）、ログ（`logs`）、移行前の控え（`migrations`） | 同期の基準や、中断からの復旧に必要な情報を失います。使い捨てのキャッシュではありません。 |
+| `state/<source-id>/` | 同期の基準（`sync`）、実行・復旧の記録（`runs`）、ログ（`logs`） | 同期の基準や、中断からの復旧に必要な情報を失います。使い捨てのキャッシュではありません。 |
 
 画像1枚の管理情報は、その画像のノートに集約されています。
 画像の ID、原本との対応、ハッシュ、変換条件の指紋は Frontmatter に保存され、CLI もここを読み取ります。
@@ -989,7 +987,7 @@ sequenceDiagram
 
 実際のサービスで確認した動作の範囲と、未検証の事項は、[実環境統合テストの手順](docs/testing/live-storage.md#検証範囲の限界)と検証記録に記載しています。
 
-## 9. 更新と移行
+## 9. 更新
 
 ### 9.1. 更新後に再インストールする
 
@@ -1006,93 +1004,6 @@ uv が記録しているソースのパスが更新されます。
 コマンド名と、`~/.tkn/objstorage-imgcatalog/` の保存領域は変わりません。
 
 バージョンごとの変更内容は [CHANGELOG.md](CHANGELOG.md) を参照します。
-
-### 9.2. 旧保存構造のデータを移行する
-
-画像の管理情報はノートの Frontmatter（`schemaVersion: "3.0.0"`）に、実行記録は `state/runs` に保存します。
-次のいずれかが残っている場合は、通常のデータ操作の前に移行が必要です。
-移行せずに通常のコマンドを実行すると、移行方法を表示して停止します。
-
-- 旧 `catalog`・`provenance` フォルダーの JSON
-- `schemaVersion` が `1.0.0` または `2.0.0` のノート
-
-更新後、source ごとに次を実行します。
-
-```shell
-tkn-objstorage-imgcatalog migrate --source my-obj-storage-1 --dry-run
-tkn-objstorage-imgcatalog migrate --source my-obj-storage-1
-tkn-objstorage-imgcatalog verify --source my-obj-storage-1
-```
-
-`migrate --dry-run` は、ノート・画像・原本・実行記録を検証し、変更件数を表示します。
-クラウドには接続せず、ファイルを書き込みません。
-
-`migrate` は、次の順で処理します。
-
-1. 移行前のノートと旧 JSON を、`state/<source-id>/migrations/<run-id>/` に控えとして保存します。
-2. ノートを更新し、実行記録を `state/runs` に統合します。同じ実行記録がすでにあれば重複させず、同じ ID で内容が異なる場合は停止します。
-3. 移行が完了した旧 `catalog`・`provenance` の JSON と、空になったフォルダーを取り除きます。
-
-移行で変わるものと保持するものは、次のとおりです。
-
-| 区分 | 内容 |
-| --- | --- |
-| 変わるもの | ノートの `schemaVersion` が `"3.0.0"` になります。旧 `blobName` / `blobUrl` は `objectKey` / `objectUrl` に、旧自動生成ブロックは新しい名称のブロックに置き換わります。 |
-| 保持するもの | アセット ID・ノート ID、ノートの説明・タグ・独自プロパティ・ブロック外の本文、原本と公開用画像、同期の基準 |
-
-通常の書き込みエラーでは、適用済みの変更を元に戻します。
-強制終了した場合は、`migrate --dry-run` で確認してから再実行できます。控えは手動での復元にも使えます。
-
-公開用画像の旧版を保存する機能（旧 `history`）はありません。
-旧 `history` や `legacy` フォルダーに残っているファイルは、自動では削除されず、今後の画像管理にも使用しません。
-
-### 9.3. 旧設定の notes_root を取り除く
-
-設定に `notes_root` がある場合は、値が `null` でも設定エラーになります。
-CLI が設定や既存ノートを自動で移動することはないため、ノートの場所に応じて次のように対応します。
-
-| ノートの場所 | 対応 |
-| --- | --- |
-| すでに `<data_root>/notes` にある | 設定から `notes_root` の行を削除します。 |
-| `<data_root>/notes` の外にある | 先にバックアップを取り、同名ファイルと衝突しないことを確認します。ノートと `images.base` を `<data_root>/notes` に移してから、設定行を削除します。 |
-
-その後、画像への参照を更新します。
-
-```shell
-tkn-objstorage-imgcatalog notes refresh --source my-obj-storage-1 --dry-run
-tkn-objstorage-imgcatalog notes refresh --source my-obj-storage-1
-```
-
-### 9.4. 旧 Azure 版の設定を引き継ぐ
-
-`~/.tkn/objstorage-imgcatalog/config.yaml` がない場合は、旧 `~/.tkn/azure_blob_note/config.yaml` を読み込みます。
-
-- 設定 `1.0.x` は `images` という source として、`2.0.x` は既存の source 名のまま扱います。
-- 省略した保存先は、旧 `~/.tkn/azure_blob_note/` 配下を使います。読み込み時に、移動や書き換えは行いません。
-- 既存のアセット ID・ノート ID・Azure の同期履歴を保持します。
-
-旧設定が使われている状態での `config init` は、新しい設定で旧設定を隠してしまわないように停止します。
-旧設定のまま使う場合は、`config list` で内容を確認してください。
-新しいユーザー設定を作成すると、旧ユーザー設定の自動読み込みは終了します。
-
-手動で `"4.0.0"` の設定へ書き直す場合は、次の点に注意します。
-
-- 既存のデータを使い続けるために、旧 `data_root`・`state_root` を明記します。
-- `notes_root` は削除し、ノートを `<data_root>/notes` に揃えます。手順は「[9.3. 旧設定の notes_root を取り除く](#93-旧設定の-notes_root-を取り除く)」を参照します。
-- 旧データは「[9.2. 旧保存構造のデータを移行する](#92-旧保存構造のデータを移行する)」の `migrate` で移行します。
-
-### 9.5. 旧名のコマンドと保存先から移る
-
-| 更新前の状態 | 必要な操作 |
-| --- | --- |
-| 0.4.1 より前：コマンド名が `tkn-object-storage-catalog` | 現在の名前でインストールし、起動を確認した後、`uv tool uninstall tkn-object-storage-catalog` で旧コマンドを削除できます。 |
-| 0.4.2 より前：既定の保存先が `~/.tkn/object_storage_catalog/` | フォルダーを `~/.tkn/objstorage-imgcatalog/` へ移し、設定やノートに含まれる絶対パスも更新します。 |
-| 旧 Azure 版：コマンド名が `tkn-azure-blob-note` | 現在の名前でインストールした後、`uv tool uninstall tkn-azure-blob-note` で旧コマンドを削除できます。 |
-
-- 旧コマンドの別名は提供しません。
-- 旧コマンドをアンインストールしても、ユーザーデータは削除されません。
-- 保存先を移しても、ノートの管理マーカーと、画像・ノートの ID は維持されます。
-- 同期履歴の識別にはデータ保存先が含まれます。保存先を移した場合は、`status --source <id> --remote` で同期の状態を確認してください。
 
 ## 10. 開発と検証
 

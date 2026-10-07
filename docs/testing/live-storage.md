@@ -23,7 +23,7 @@ CLIはこのcheckoutの `cli.main` をプロセス内で呼び、parser・設定
 
 `uv sync --locked` で開発環境を準備します。リポジトリ移動後は、現在の `.venv/Scripts/python.exe` とR2起動補助のパスを確認してください。テストプログラムは現在のcheckoutの `src` を優先して読みます。
 
-普段の `~/.tkn/objstorage-imgcatalog/config.yaml` に、非秘密の接続先を `integration_tests` として追加します。通常の `sources` はそのまま残します。先に `uv tool install . --reinstall` でインストール済みCLIを更新し、設定の `schema_version` を `"4.0.0"` にしてください。旧 `notes_root` 設定がある場合は、[READMEの「旧設定の notes_root を取り除く」](../../README.md#93-旧設定の-notes_root-を取り除く)に従い、ノートを `<data_root>/notes` に揃えて設定行を削除します。
+普段の `~/.tkn/objstorage-imgcatalog/config.yaml` に、非秘密の接続先を `integration_tests` として追加します。通常の `sources` はそのまま残します。先に `uv tool install . --reinstall` でインストール済みCLIを更新し、設定の `schema_version` を `"4.0.0"` にしてください。ノートの保存先は `<data_root>/notes` です。
 
 以下は追加する部分の例です。既存の設定全体を置き換えず、承認済みの引き継ぎ資料の値へ書き換えてください。ハッシュ欄も、後述のレビュー時に算出した64桁の値が必要です。
 

@@ -289,7 +289,6 @@ def test_cli_reports_all_sources_and_requires_selection_before_any_work(
         (["pull", "--dry-run"], "pull"),
         (["notes", "refresh", "--dry-run"], "refresh_notes"),
         (["recover", "--dry-run"], "recover"),
-        (["migrate", "--dry-run"], "migrate"),
         (["status"], "status"),
         (["verify", "--remote"], "verify"),
     ],
@@ -413,7 +412,6 @@ DATA_COMMANDS = [
     ["pull"],
     ["notes", "refresh"],
     ["recover"],
-    ["migrate"],
     ["status"],
     ["verify"],
 ]

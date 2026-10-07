@@ -69,9 +69,9 @@ def test_missing_note_does_not_silently_claim_valid_release(cfg, asset):
     assert verify(cfg)[0]["issues"] == ["Unmanaged release."]
 
 
-def test_legacy_records_require_explicit_migration(cfg, asset):
+def test_legacy_records_are_rejected(cfg, asset):
     atomic_json(cfg.data_root / "catalog" / (asset["asset_id"] + ".json"), asset)
-    with pytest.raises(AppError, match="migrate"):
+    with pytest.raises(AppError, match="Old storage layout is not supported"):
         NoteStore(cfg).assets()
 
 

@@ -90,7 +90,13 @@ def test_image_and_note_update_dates_are_independent(cfg, asset, blobs, monkeypa
     assert after["releaseGeneratedAt"] == IMAGE_TIME
 
 
-def test_recovery_not_suppressed_by_recent_note_edit(cfg, asset, monkeypatch):
+def test_recovery_not_suppressed_by_recent_note_edit(cfg, source, monkeypatch):
+    monkeypatch.setattr(assets, "now", lambda: IMAGE_TIME)
+    monkeypatch.setattr(images, "now", lambda: IMAGE_TIME)
+    monkeypatch.setattr(notes, "now", lambda: NOTE_TIME)
+    with Operation(cfg, "import", False) as operation:
+        images.import_images(cfg, [source], operation)
+    asset = NoteStore(cfg).assets()[0]
     path, data = read_note(cfg, asset)
     # The note was edited after the interrupted image generation.
     data["updated"] = LATER

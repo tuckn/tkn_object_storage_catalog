@@ -32,11 +32,11 @@ def ensure_current_layout(config: Config) -> None:
     for name in ("catalog", "provenance"):
         folder = within(config.data_root, name)
         if folder.exists() and (not folder.is_dir() or any(folder.iterdir())):
-            raise AppError("Old storage layout found; run migrate --dry-run, then migrate.")
+            raise AppError("Old storage layout is not supported. Use a separate data_root for the current layout.")
 
 
 def validate_record(config: Config, item: Record) -> None:
-    """Validate the in-memory image record used by notes and migration journals."""
+    """Validate the in-memory image record used by notes and execution records."""
     try:
         for key in (
             "asset_id",
@@ -90,13 +90,13 @@ def validate_record(config: Config, item: Record) -> None:
             if not isinstance(stamp, str) or datetime.fromisoformat(stamp).tzinfo is None:
                 raise ValueError
     except (KeyError, TypeError, ValueError, AttributeError) as exc:
-        raise AppError("Invalid image record in note or migration input.") from exc
+        raise AppError("Invalid image record in note.") from exc
 
 
 def record_from_note(config: Config, data: Any, relative_note: str) -> Record:
     version = data.get("schemaVersion")
     if isinstance(version, str) and version in {"1.0.0", "2.0.0"}:
-        raise AppError("Legacy note schema requires migrate and its legacy catalog.")
+        raise AppError("Legacy note schema is not supported; expected schemaVersion 3.0.0.")
     if data.get("schemaVersion") != NOTE_SCHEMA_VERSION:
         raise AppError("Unsupported note schema version.")
     # Obsidian/user edits may leave ISO timestamps unquoted in YAML.

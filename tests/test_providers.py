@@ -15,7 +15,7 @@ from tkn_objstorage_imgcatalog.assets import NoteStore, Operation, make_record
 from tkn_objstorage_imgcatalog.config import load_config
 from tkn_objstorage_imgcatalog.errors import AppError
 from tkn_objstorage_imgcatalog.io import fingerprint
-from tkn_objstorage_imgcatalog.notes import find_note, refresh_notes, split_note, urls
+from tkn_objstorage_imgcatalog.notes import find_note, refresh_notes, urls
 from tkn_objstorage_imgcatalog.storage import open_store
 from tkn_objstorage_imgcatalog.sync import pull, push, verify
 
@@ -171,35 +171,6 @@ def test_r2_jurisdiction_endpoints(tmp_path, jurisdiction):
     )
     config = load_config(write_config(tmp_path, {"images": value}))
     assert config.s3["endpoint_url"].endswith("r2.cloudflarestorage.com")
-
-
-def test_note_migration_preserves_human_content_and_ids(cfg, asset):
-    path = find_note(cfg, asset)
-    text = path.read_text(encoding="utf-8").replace(
-        'schemaVersion: "3.0.0"', "schemaVersion: 1.0.0"
-    )
-    text = text.replace("objectKey:", "blobName:").replace("objectUrl:", "blobUrl:")
-    text = text.replace("object-storage-catalog:", "azure-blob-note:")
-    text = text.replace("description:", "description: My description # keep")
-    text += "\n## VLM description\nHuman-reviewed text.\n"
-    path.write_text(text, encoding="utf-8")
-    from tkn_objstorage_imgcatalog.io import atomic_json
-    from tkn_objstorage_imgcatalog.migration import migrate
-
-    atomic_json(cfg.data_root / "catalog" / (asset["asset_id"] + ".json"), asset)
-    with Operation(cfg, "migrate", False) as operation:
-        migrate(cfg, operation)
-    result = path.read_text(encoding="utf-8")
-    data, _ = split_note(result)
-    assert data["assetId"] == asset["asset_id"]
-    assert data["noteId"] == asset["note_id"]
-    assert data["schemaVersion"] == "3.0.0"
-    assert "blobName" not in data and "blobUrl" not in data
-    assert data["objectKey"] == asset["relative_path"]
-    assert "# keep" in result and "Human-reviewed text." in result
-    assert result.count("<!-- object-storage-catalog:begin -->") == 1
-    assert "azure-blob-note:" not in result
-    assert refresh_notes(cfg, [asset["asset_id"]])[0]["status"] == "unchanged"
 
 
 @pytest.mark.parametrize(

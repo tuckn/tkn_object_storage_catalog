@@ -110,7 +110,7 @@ def test_installed_entrypoint_outside_repository(tmp_path):
         text=True,
     )
     assert completed.returncode == 0
-    assert "tkn-objstorage-imgcatalog 0.11.1" in completed.stdout
+    assert "tkn-objstorage-imgcatalog 0.12.0" in completed.stdout
 
 
 def test_cli_import_json_and_quiet(cfg, source, capsys):
@@ -176,3 +176,10 @@ def test_notes_follow_resolved_data_root_override(tmp_path):
     assert cfg.notes_root == tmp_path / "new-vault" / "notes"
     assert "notes_root" not in cfg.source_values
     assert not cfg.data_root.exists()
+
+
+def test_migrate_command_is_unavailable(capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["migrate", "--source", "images", "--dry-run"])
+    assert exc.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
