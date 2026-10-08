@@ -125,7 +125,7 @@ def pull(
         relative = remote["relative_path"]
         if selected and relative not in selected:
             continue
-        target = within(config.data_root / "releases", relative)
+        target = within(config.data_root / "3_releases", relative)
         for name in records:
             if name.casefold() == relative.casefold() and name != relative:
                 raise ConflictError("Remote and local names differ only by case.")
@@ -161,7 +161,7 @@ def pull(
     for remote, record, action, remote_hash, local_hash in plans:
         relative = remote["relative_path"]
         if not operation.dry_run:
-            target = within(config.data_root / "releases", relative)
+            target = within(config.data_root / "3_releases", relative)
             if (sha256(target) if target.exists() else None) != local_hash:
                 raise ConflictError("Local image changed during download planning.")
             if action != "unchanged":
@@ -288,11 +288,11 @@ def verify(config: Config, *, blobs: ObjectStore | None = None) -> list[Record]:
                 "issues": issues,
             }
         )
-    for path in (config.data_root / "releases").rglob("*"):
+    for path in (config.data_root / "3_releases").rglob("*"):
         if (
             path.is_file()
             and path.suffix.lower() in IMAGE_EXTENSIONS
-            and path.relative_to(config.data_root / "releases").as_posix() not in known
+            and path.relative_to(config.data_root / "3_releases").as_posix() not in known
         ):
             result.append({"status": "failed", "issues": ["Unmanaged release."], "path": str(path)})
     return result

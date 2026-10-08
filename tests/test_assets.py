@@ -23,7 +23,7 @@ from tkn_objstorage_imgcatalog.sync import verify
         ("sha256", "bad"),
         ("bytes", True),
         ("sourceAvailable", "false"),
-        ("originalRef", "releases/not-an-original.webp"),
+        ("originalRef", "3_releases/not-an-original.webp"),
         ("conversionRecipe", 1),
         ("created", "not-a-date"),
         ("releaseGeneratedAt", None),
@@ -57,7 +57,7 @@ def test_duplicate_identifiers_or_release_path_are_rejected(cfg, asset, duplicat
         if key != duplicate:
             data[key] = str(uuid4())
     if duplicate != "releaseRef":
-        data["releaseRef"] = "releases/other.webp"
+        data["releaseRef"] = "3_releases/other.webp"
     (cfg.notes_root / "copy.md").write_text(serialize(data, body), encoding="utf-8")
     with pytest.raises(ConflictError, match="Multiple notes"):
         NoteStore(cfg).assets()

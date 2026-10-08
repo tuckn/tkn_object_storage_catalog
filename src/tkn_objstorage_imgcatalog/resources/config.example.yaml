@@ -10,7 +10,7 @@ integration_tests: {}
 sources:
   my-obj-storage-1:
     # null uses ~/.tkn/objstorage-imgcatalog/data/<source-id>
-    # Open this directory as the Obsidian Vault root; notes stay in <data_root>/notes.
+    # Open this directory as the Obsidian Vault root; notes stay in <data_root>/4_notes.
     data_root: null
     # null uses ~/.tkn/objstorage-imgcatalog/state/<source-id>
     state_root: null

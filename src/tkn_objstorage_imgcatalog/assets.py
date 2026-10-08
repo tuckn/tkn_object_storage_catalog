@@ -10,11 +10,13 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 from filelock import FileLock, Timeout
 
 from . import __version__
-from .config import Config
+from .config import Config, resource
 from .diagnostics import diagnostic_message, storage_diagnostic
 from .errors import AppError, ConflictError
 from .io import (
+    IMAGE_EXTENSIONS,
     SCHEMA_VERSION,
+    atomic_bytes,
     atomic_json,
     fingerprint,
     now,
@@ -30,7 +32,7 @@ NOTE_SCHEMA_VERSION = "3.0.0"
 
 
 def ensure_current_layout(config: Config) -> None:
-    for name in ("catalog", "provenance"):
+    for name in ("catalog", "provenance", "staging", "originals", "releases", "notes"):
         folder = within(config.data_root, name)
         if folder.exists() and (not folder.is_dir() or any(folder.iterdir())):
             raise AppError(
@@ -54,7 +56,7 @@ def validate_record(config: Config, item: Record) -> None:
         for key in ("asset_id", "note_id"):
             if str(UUID(item[key])) != item[key]:
                 raise ValueError
-        within(config.data_root / "releases", item["relative_path"])
+        within(config.data_root / "3_releases", item["relative_path"])
         within(config.notes_root, item["note_path"])
         release = item["release"]
         if (
@@ -73,7 +75,7 @@ def validate_record(config: Config, item: Record) -> None:
             for key in ("path", "sha256", "ref", "entity_id"):
                 if not isinstance(source[key], str) or not source[key]:
                     raise ValueError
-            if not source["path"].startswith("originals/"):
+            if not source["path"].startswith("2_originals/"):
                 raise ValueError
             within(config.data_root, source["path"])
             digests.append(source["sha256"])
@@ -109,7 +111,7 @@ def record_from_note(config: Config, data: Any, relative_note: str) -> Record:
             data[key] = data[key].isoformat()
     try:
         ref = data["releaseRef"]
-        if not isinstance(ref, str) or not ref.startswith("releases/"):
+        if not isinstance(ref, str) or not ref.startswith("3_releases/"):
             raise ValueError
         if type(data["sourceAvailable"]) is not bool:
             raise ValueError
@@ -131,7 +133,7 @@ def record_from_note(config: Config, data: Any, relative_note: str) -> Record:
             "schema_version": SCHEMA_VERSION,
             "asset_id": data["assetId"],
             "note_id": data["noteId"],
-            "relative_path": ref[len("releases/") :],
+            "relative_path": ref[len("3_releases/") :],
             "note_path": relative_note,
             "created_at": data["created"],
             "updated_at": data["updated"],
@@ -183,6 +185,33 @@ def scan_notes(config: Config) -> list[Record]:
     return records
 
 
+def initialize_empty_library(config: Config) -> None:
+    """Prepare a new library; existing image data and reference views are retained."""
+    ensure_current_layout(config)
+    folders = {
+        name: within(config.data_root, name)
+        for name in ("1_staging", "2_originals", "3_releases", "4_notes")
+    }
+    for folder in folders.values():
+        if folder.exists() and not folder.is_dir():
+            raise AppError("Library folder path is occupied by a file.")
+    # Pending staging inputs and ordinary Vault files do not make a catalog.
+    for name in ("2_originals", "3_releases"):
+        if any(
+            path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+            for path in folders[name].rglob("*")
+        ):
+            return
+    if scan_notes(config):
+        return
+    base = within(config.notes_root, "index.base")
+    content = None if base.exists() else resource("index.base").encode("utf-8")
+    for folder in folders.values():
+        folder.mkdir(parents=True, exist_ok=True)
+    if content is not None:
+        atomic_bytes(base, content, create_only=True)
+
+
 class NoteStore:
     def __init__(self, config: Config):
         self.config = config
@@ -217,7 +246,7 @@ class NoteStore:
         return result
 
     def release(self, record: Record) -> Path:
-        return within(self.root / "releases", record["relative_path"])
+        return within(self.root / "3_releases", record["relative_path"])
 
     def save(self, record: Record, *, sync_status: str | None = None) -> None:
         from .notes import refresh_note
@@ -340,7 +369,15 @@ class Operation(AbstractContextManager["Operation"]):
                 logging.getLogger("tkn_objstorage_imgcatalog").addHandler(self.handler)
                 self.flush()
             except BaseException:
+                if self.handler:
+                    logging.getLogger("tkn_objstorage_imgcatalog").removeHandler(self.handler)
+                    self.handler.close()
                 self.lock.release()
+                raise
+            try:
+                initialize_empty_library(self.config)
+            except BaseException as exc:
+                self.__exit__(type(exc), exc, exc.__traceback__)
                 raise
         return self
 

@@ -51,8 +51,8 @@ def test_readonly_note_collision_preflight(cfg, source):
         with pytest.raises(ConflictError):
             with Operation(cfg, "import", preview) as operation:
                 import_images(cfg, [source], operation)
-        assert not (cfg.data_root / "originals").exists()
-        assert not (cfg.data_root / "releases").exists()
+        assert not any((cfg.data_root / "2_originals").rglob("*"))
+        assert not any((cfg.data_root / "3_releases").rglob("*"))
 
 
 def test_atomic_create_does_not_replace_existing(tmp_path):

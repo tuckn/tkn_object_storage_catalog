@@ -61,7 +61,7 @@ def test_named_defaults_and_readonly_report(tmp_path):
     assert config.source_id == "my-obj-storage-1"
     assert config.data_root == tmp_path / "home/.tkn/objstorage-imgcatalog/data/my-obj-storage-1"
     assert config.state_root == tmp_path / "home/.tkn/objstorage-imgcatalog/state/my-obj-storage-1"
-    assert config.notes_root == config.data_root / "notes"
+    assert config.notes_root == config.data_root / "4_notes"
     report = config.report()
     assert report["config"]["schema_version"] == "4.0.0"
     assert report["effective_schema_version"] == "4.0.0"
@@ -80,7 +80,7 @@ def test_two_sources_defaults_settings_and_selection(tmp_path):
     assert public.data_root.name == "public-images"
     assert private.data_root.name == "private-images"
     assert public.state_root.name == "public-images"
-    assert public.notes_root == public.data_root / "notes"
+    assert public.notes_root == public.data_root / "4_notes"
     assert public.azure["account_url"] == "https://example.blob.core.windows.net"
     assert public.delivery["url_base"] == "https://images.example.com"
     assert private.delivery["url_base"] is None
@@ -118,7 +118,7 @@ def test_sources_mapping_replaces_and_cli_only_overrides_selected_source(tmp_pat
     assert config.source_id == "private-images"
     assert config.conversion["quality"] == 90
     assert config.data_root == tmp_path / "chosen-data"
-    assert config.notes_root == config.data_root / "notes"
+    assert config.notes_root == config.data_root / "4_notes"
     assert config.select_source("public-images").conversion["quality"] == 65
     assert config.origins["sources.private-images.conversion.quality"] == "CLI"
     assert config.origins["sources.public-images.conversion.quality"] == str(explicit)
@@ -251,7 +251,7 @@ def test_legacy_omitted_roots_keep_legacy_defaults(tmp_path):
     config = load_config(path)
     assert config.data_root == tmp_path / "home/.tkn/azure_blob_note/data"
     assert config.state_root == tmp_path / "home/.tkn/azure_blob_note/state"
-    assert config.notes_root == config.data_root / "notes"
+    assert config.notes_root == config.data_root / "4_notes"
 
 
 def test_cli_reports_all_sources_and_requires_selection_before_any_work(

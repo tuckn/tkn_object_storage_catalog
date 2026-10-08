@@ -60,7 +60,7 @@ def validate_part(value: dict[str, Any], defaults: dict[str, Any], label: str) -
         if key == "notes_root":
             raise AppError(
                 f"{label}: notes_root is no longer supported (including null). "
-                "Notes must be stored in <data_root>/notes. Back up and relocate any external "
+                "Notes must be stored in <data_root>/4_notes. Back up and relocate any external "
                 "notes there before removing this setting; open data_root as the Obsidian Vault root."
             )
         if key not in defaults:
@@ -367,7 +367,7 @@ class Config:
 
     @property
     def notes_root(self) -> Path:
-        return self.data_root / "notes"
+        return self.data_root / "4_notes"
 
     @property
     def azure(self) -> dict[str, Any]:

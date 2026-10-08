@@ -125,10 +125,10 @@ def parser() -> argparse.ArgumentParser:
         imp = sub.add_parser(
             command,
             help=(
-                "import and upload only these inputs; omitted input uses staging; "
+                "import and upload only these inputs; omitted input uses 1_staging; "
                 "--dry-run plans locally without conversion or cloud access"
                 if command == "upload"
-                else "preserve originals, prepare releases and notes; omitted input uses staging"
+                else "preserve 2_originals, prepare 3_releases and 4_notes; omitted input uses 1_staging"
             ),
         )
         common(imp)
@@ -239,7 +239,7 @@ def execute(args: argparse.Namespace) -> tuple[Any, int]:
             and (legacy_root() / "config.yaml").exists()
         ):
             raise AppError(
-                "An existing Azure config is in use. Inspect it with config list; to create a new config, use config init --path and preserve existing data_root/state_root explicitly; notes must be in <data_root>/notes."
+                "An existing Azure config is in use. Inspect it with config list; to create a new config, use config init --path and preserve existing data_root/state_root explicitly; notes must be in <data_root>/4_notes."
             )
         return init_config(
             (args.path or user_root() / "config.yaml").expanduser().resolve(),

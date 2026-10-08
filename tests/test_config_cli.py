@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from tkn_objstorage_imgcatalog import __version__
 from tkn_objstorage_imgcatalog.cli import main
 from tkn_objstorage_imgcatalog.config import init_config, load_config, resource
 from tkn_objstorage_imgcatalog.errors import AppError, ConflictError
@@ -110,7 +111,7 @@ def test_installed_entrypoint_outside_repository(tmp_path):
         text=True,
     )
     assert completed.returncode == 0
-    assert "tkn-objstorage-imgcatalog 0.12.0" in completed.stdout
+    assert completed.stdout.strip() == f"tkn-objstorage-imgcatalog {__version__}"
 
 
 def test_cli_import_json_and_quiet(cfg, source, capsys):
@@ -136,7 +137,7 @@ def test_resource_available():
 
 
 @pytest.mark.parametrize("version", ["1.0.0", "2.0.0", "3.2.0", "4.0.0"])
-@pytest.mark.parametrize("notes", [None, "data/notes", "external-vault"])
+@pytest.mark.parametrize("notes", [None, "data/4_notes", "external-vault"])
 def test_removed_notes_setting_rejected_without_writes(tmp_path, version, notes):
     settings = {"data_root": "data", "notes_root": notes}
     value = {"schema_version": version}
@@ -173,7 +174,7 @@ def test_notes_follow_resolved_data_root_override(tmp_path):
         encoding="utf-8",
     )
     cfg = load_config(path, {"data_root": "new-vault"}, home=tmp_path / "empty", cwd=tmp_path)
-    assert cfg.notes_root == tmp_path / "new-vault" / "notes"
+    assert cfg.notes_root == tmp_path / "new-vault" / "4_notes"
     assert "notes_root" not in cfg.source_values
     assert not cfg.data_root.exists()
 

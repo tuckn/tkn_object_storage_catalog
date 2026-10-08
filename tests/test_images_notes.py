@@ -117,7 +117,7 @@ def test_colliding_inputs_preflight(cfg, source):
     with pytest.raises(ConflictError):
         with Operation(cfg, "import", False) as operation:
             import_images(cfg, [source.parent], operation)
-    assert not (cfg.data_root / "releases").exists()
+    assert not any((cfg.data_root / "3_releases").rglob("*"))
     assert source.exists()
 
 
@@ -167,12 +167,12 @@ def test_vault_relative_preview_survives_note_and_vault_moves(cfg, source, tmp_p
     assert snapshot(tmp_path) == before
     refresh_notes(cfg, [])
     data, body = split_note(moved_note.read_text(encoding="utf-8"))
-    assert data["cover"] == "releases/goods/生成 画像.webp"
+    assert data["cover"] == "3_releases/goods/生成 画像.webp"
     assert (cfg.data_root / data["cover"]).is_file()
     preview = body.split("![Image](", 1)[1].split(")", 1)[0]
     assert not preview.startswith("file:")
     assert (moved_note.parent / unquote(preview)).resolve() == cfg.data_root / data["cover"]
     assert NoteStore(cfg).assets()[0]["asset_id"] == record["asset_id"]
     assert verify(cfg)[0]["status"] == "valid"
-    assert (cfg.notes_root / "images.base").is_file()
+    assert (cfg.notes_root / "index.base").is_file()
     assert not (cfg.data_root / ".obsidian").exists()

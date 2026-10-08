@@ -80,11 +80,11 @@ def import_images(
     config: Config, inputs: list[Path], operation: Operation, *, name: str | None = None
 ) -> list[Record]:
     store = NoteStore(config)
-    inputs = inputs or [config.data_root / "staging"]
+    inputs = inputs or [config.data_root / "1_staging"]
     candidates: list[tuple[Path, str]] = []
     for supplied in inputs:
         supplied = supplied.expanduser().resolve()
-        if not supplied.exists() and supplied == config.data_root / "staging":
+        if not supplied.exists() and supplied == config.data_root / "1_staging":
             continue
         for source in image_files(supplied):
             relative = (
@@ -98,9 +98,9 @@ def import_images(
     seen: set[str] = set()
     for source, relative in candidates:
         if source.is_relative_to(config.data_root) and not source.is_relative_to(
-            config.data_root / "staging"
+            config.data_root / "1_staging"
         ):
-            raise AppError("import only accepts external inputs or data/staging.")
+            raise AppError("import only accepts external inputs or data/1_staging.")
         relative = name or relative
         convert = should_convert(source, config)
         if convert:
@@ -109,7 +109,7 @@ def import_images(
             raise AppError(
                 "--name must keep the input extension when conversion is disabled or skipped."
             )
-        target = within(config.data_root / "releases", relative)
+        target = within(config.data_root / "3_releases", relative)
         if relative.casefold() in seen:
             raise ConflictError("Inputs map to the same release name; use distinct --name values.")
         seen.add(relative.casefold())
@@ -147,7 +147,7 @@ def import_images(
         if operation.dry_run:
             result.append(status)
             continue
-        original_rel = "originals/" + digest + "/" + source.name
+        original_rel = "2_originals/" + digest + "/" + source.name
         original = within(config.data_root, original_rel)
         operation.event(
             "capture_started",

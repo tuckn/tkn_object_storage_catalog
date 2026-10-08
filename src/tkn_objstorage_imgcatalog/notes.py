@@ -13,7 +13,7 @@ from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.error import YAMLError
 
 from .assets import NOTE_SCHEMA_VERSION, NoteStore, Record
-from .config import Config, resource
+from .config import Config
 from .errors import AppError, ConflictError
 from .io import atomic_bytes, now, sha256, within
 from .note_template import format_frontmatter, note_template
@@ -128,7 +128,7 @@ def render_note(
         "assetId": record["asset_id"],
         "noteId": record["note_id"],
         "localPath": str(image),
-        "releaseRef": "releases/" + record["relative_path"],
+        "releaseRef": "3_releases/" + record["relative_path"],
         "sourceAvailable": source is not None,
         "sourceRef": source["ref"] if source else None,
         "originalRef": source["path"] if source else None,
@@ -139,7 +139,7 @@ def render_note(
         "objectKey": "/".join(x for x in (config.storage["prefix"], record["relative_path"]) if x),
         "objectUrl": blob,
         "url": url,
-        "cover": "releases/" + record["relative_path"],
+        "cover": "3_releases/" + record["relative_path"],
     }
     if sync_status:
         managed["syncStatus"] = sync_status
@@ -232,7 +232,4 @@ def refresh_notes(config: Config, selectors: list[str], *, dry_run: bool = False
         store.check_release(record)
         status = refresh_note(config, record, dry_run=dry_run)
         result.append({"asset_id": record["asset_id"], "status": status})
-    base = config.notes_root / "images.base"
-    if not base.exists() and not dry_run:
-        atomic_bytes(base, resource("images.base").encode())
     return result

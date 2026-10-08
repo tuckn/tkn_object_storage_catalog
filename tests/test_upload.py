@@ -67,7 +67,7 @@ def test_upload_empty_staging_never_pushes_existing_assets(asset, monkeypatch, r
 
 
 def test_upload_staging_multiple_no_conversion(cfg, blobs, run_upload):
-    staging = cfg.data_root / "staging"
+    staging = cfg.data_root / "1_staging"
     staging.mkdir(parents=True)
     for name in ("one", "two"):
         Image.new("RGB", (8, 8), "red").save(staging / f"{name}.png")

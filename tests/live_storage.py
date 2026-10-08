@@ -466,7 +466,7 @@ class LiveRun:
             "CLI pull into isolated receiver",
             lambda: require(
                 self.command(pull_path, "pull")["result"][0]["status"] == "created"
-                and sha256(pull_config.data_root / "releases" / relative)
+                and sha256(pull_config.data_root / "3_releases" / relative)
                 == record["release"]["sha256"]
             ),
         )

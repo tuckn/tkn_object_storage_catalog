@@ -19,9 +19,9 @@ Azure Blob Storage・AWS S3・Cloudflare R2 に置く画像を、手元の原本
 
 | 作成されるもの | 保存先（データ保存領域からの相対パス） | 使い道 |
 | --- | --- | --- |
-| 原本の写し | `originals/<sha256>/photo.png` | 変換前のバイト列を保持します。変換設定を変えて作り直すときの元になります。 |
-| 公開用の画像 | `releases/photo.webp` | 選択した Object Storage へアップロードする画像です。 |
-| 画像ノート | `notes/photo.webp.md` | 説明、タグ、関連プロジェクトなどを書き込みます。 |
+| 原本の写し | `2_originals/<sha256>/photo.png` | 変換前のバイト列を保持します。変換設定を変えて作り直すときの元になります。 |
+| 公開用の画像 | `3_releases/photo.webp` | 選択した Object Storage へアップロードする画像です。 |
+| 画像ノート | `4_notes/photo.webp.md` | 説明、タグ、関連プロジェクトなどを書き込みます。 |
 
 画像ノートは、次のような Markdown です。
 以下は説明用の例で、CLI が管理する項目の一部を省略しています。
@@ -32,7 +32,7 @@ type: image
 schemaVersion: "3.0.0"
 title: "photo.webp"
 description: 2026年春の展示会で撮影したブースの全景
-cover: "releases/photo.webp"
+cover: "3_releases/photo.webp"
 
 # --- Asset identity ---
 assetId: <asset-id>
@@ -50,9 +50,9 @@ noteId: <note-id>
 # photo.webp
 
 <!-- object-storage-catalog:begin -->
-![Image](../releases/photo.webp)
+![Image](../3_releases/photo.webp)
 
-[Local image](file:///C:/path/to/data/releases/photo.webp)
+[Local image](file:///C:/path/to/data/3_releases/photo.webp)
 
 [Remote image (access permissions apply)](https://examplestorage.blob.core.windows.net/images/photo.webp)
 <!-- object-storage-catalog:end -->
@@ -113,9 +113,9 @@ flowchart LR
     Input[("新規の入力画像")]
     Pull["pull：既存画像を取得する"]
     Upload["upload：取り込んで送信する"]
-    Originals[("originals：原本")]
-    Releases[("releases：公開用画像")]
-    Notes[("notes：画像ノート")]
+    Originals[("2_originals：原本")]
+    Releases[("3_releases：公開用画像")]
+    Notes[("4_notes：画像ノート")]
 
     Cloud -->|"既存の画像"| Pull
     Pull -->|"変換せずに保存"| Releases
@@ -201,7 +201,7 @@ WebP 変換に使う Pillow を含め、必要な Python パッケージは一�
 tkn-objstorage-imgcatalog --version
 ```
 
-`tkn-objstorage-imgcatalog 0.12.0` のようにバージョンが表示されれば、インストールは完了しています。
+`tkn-objstorage-imgcatalog 0.14.0` のようにバージョンが表示されれば、インストールは完了しています。
 コマンドが見つからない場合は、`uv tool update-shell` を実行してから、新しいターミナルを開きます。
 
 コマンドとオプションの一覧は `tkn-objstorage-imgcatalog --help` で確認できます。
@@ -226,7 +226,7 @@ tkn-objstorage-imgcatalog config list
 `my-obj-storage-1` は任意の source ID です。URL、コンテナー名、バケット名、プロファイル名は実際の値に置き換えます。
 画像の変換・保存先・配信 URL は、接続先によらず同じ設定キーを使います。
 
-**Azure Blob Storage**
+#### Azure Blob Storage
 
 ```yaml
 schema_version: "4.0.0"
@@ -248,7 +248,7 @@ az login
 [Microsoft Entra ID による BLOB へのアクセス承認](https://learn.microsoft.com/azure/storage/blobs/authorize-access-azure-active-directory)も参照してください。
 Azure 上で実行する場合は、`azure.auth: managed_identity` も選べます。
 
-**AWS S3**
+#### AWS S3
 
 ```yaml
 schema_version: "4.0.0"
@@ -270,7 +270,7 @@ IAM Identity Center の場合は、設定済みのプロファイルで `aws sso
 SSE-KMS を使うバケットでは KMS の権限も必要です。
 詳細は [Boto3 の認証情報](https://docs.aws.amazon.com/boto3/latest/guide/credentials.html)を参照してください。
 
-**Cloudflare R2**
+#### Cloudflare R2
 
 ```yaml
 schema_version: "4.0.0"
@@ -288,15 +288,46 @@ sources:
 
 `endpoint_url` は、Cloudflare が表示するアカウントの S3 API エンドポイントに置き換えます。
 EU / FedRAMP の管轄別エンドポイントにも対応します。
-R2 の Access Key ID / Secret Access Key を `r2-images` プロファイルに設定します（例：`aws configure --profile r2-images`）。
-通常の Cloudflare API トークンを、そのまま S3 のキーとして指定することはできません。
-認証情報には、対象バケットのオブジェクト読み書き権限が必要です。
-[Cloudflare の Boto3 利用例](https://developers.cloudflare.com/r2/examples/aws/boto3/)を参照してください。
+
+認証は、R2 のアクセスキーを発行して、この PC に登録します。
+以下は、基本的な手順です。キーは暗号化せず平文で保存されます。
+
+1. Cloudflare ダッシュボードの **R2 Object Storage → API Tokens の Manage → Create User API token** を開きます。
+2. 用途が分かる名前を付け、権限を **Object Read & Write**、対象を利用するバケットだけに限定します。有効期限（例：30日）を指定して発行します。
+3. 発行画面の **Access Key ID** と **Secret Access Key** を、次の手順で登録します。**Token value** は使いません。Secret Access Key は再表示できないため、登録が終わるまで画面を開いておきます。
+
+[AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) をインストールし、PowerShell で次を実行します。AWS CLI は R2 のキーを登録するために使い、AWS アカウントは不要です。
+
+```powershell
+aws configure --profile r2-images
+```
+
+表示される4項目には、順に次の値を入力します。
+
+| 入力項目 | 入力する値 |
+| --- | --- |
+| `AWS Access Key ID` | R2 の Access Key ID |
+| `AWS Secret Access Key` | R2 の Secret Access Key |
+| `Default region name` | `auto` |
+| `Default output format` | `json` |
+
+プロファイル名 `r2-images` は、上の YAML の `s3.profile` と一致させます。
+キーは既定で `~\.aws\credentials` に**平文**で保存され、リージョンなどは `~\.aws\config` に保存されます。DPAPI による暗号化は行いません。
+キーをこの CLI の `config.yaml` に書く必要はありません。有効期限が切れたら再発行し、同じコマンドで登録し直します。
+
+最後に、読み取り接続と取得予定を確認してから実行します。`--source` には YAML の source ID を指定します。
+
+```powershell
+tkn-objstorage-imgcatalog pull --source my-obj-storage-1 --dry-run
+tkn-objstorage-imgcatalog pull --source my-obj-storage-1
+```
+
+画面操作の詳細は [Cloudflare の R2 アクセスキー発行手順](https://developers.cloudflare.com/r2/api/tokens/)を参照してください。
 
 `delivery.url_base` は任意です。画像を配信する場合だけ、設定済みの独自ドメインなどを指定します。
 R2 の S3 API エンドポイントはブラウザー向けの配信 URL として使えないため、未設定ではノートの `url` が `null` になり、手元の画像へのリンクを使います。
 
-**設定の確認**
+### 設定の確認
 
 ```shell
 tkn-objstorage-imgcatalog config list
@@ -335,11 +366,12 @@ prefix が空なら、コンテナー／バケット全体の対応画像が対�
 
 | 保存先 | 取得結果 |
 | --- | --- |
-| 手元の公開用画像 | `<data_root>/releases/travel/kyoto/existing.webp` |
-| 画像ノート | `<data_root>/notes/travel/kyoto/existing.webp.md` |
+| 手元の公開用画像 | `<data_root>/3_releases/travel/kyoto/existing.webp` |
+| 画像ノート | `<data_root>/4_notes/travel/kyoto/existing.webp.md` |
 
 画像は変換せずに取得し、クラウド上の画像は変更しません。
-`originals` に原本は作成されないため、取得した画像は `build`（原本からの作り直し）の対象になりません。
+`2_originals` に原本ファイルは作成されないため、取得した画像は `build`（原本からの作り直し）の対象になりません。
+初回の通常実行では、画像の取得前に `1_staging`・`2_originals`・`3_releases`・`4_notes` のフォルダーと、参考用の `4_notes/index.base` を作成します。
 既存の手元の画像と競合した場合は停止します。「[4.3. 手元とクラウドの内容が食い違ったとき](#43-手元とクラウドの内容が食い違ったとき)」を参照してください。
 新規画像を追加しない場合は、手順3の確認へ進みます。
 
@@ -361,9 +393,9 @@ WebP 変換が有効な場合（既定）、次の画像とノートが作成さ
 
 | 保存先 | この例の結果 |
 | --- | --- |
-| 手元の原本 | `<data_root>/originals/<sha256>/photo.png` |
-| 手元の公開用画像 | `<data_root>/releases/travel/kyoto/photo.webp` |
-| 画像ノート | `<data_root>/notes/travel/kyoto/photo.webp.md` |
+| 手元の原本 | `<data_root>/2_originals/<sha256>/photo.png` |
+| 手元の公開用画像 | `<data_root>/3_releases/travel/kyoto/photo.webp` |
+| 画像ノート | `<data_root>/4_notes/travel/kyoto/photo.webp.md` |
 | クラウドのコンテナー／バケット | `travel/kyoto/photo.webp`。prefix 設定時は `<prefix>/travel/kyoto/photo.webp` |
 
 入力ファイルは削除も移動もされません。
@@ -435,15 +467,16 @@ tkn-objstorage-imgcatalog verify --source my-obj-storage-1 --remote
 
 **`data_root` そのものを Obsidian の Vault ルートとして開きます。**
 既定では `~/.tkn/objstorage-imgcatalog/data/my-obj-storage-1` です。
-その中の `notes` フォルダーからノートを開くと、ノートと手元の画像が同じ Vault に入っているため、ノート内に画像が表示されます。
+その中の `4_notes` フォルダーからノートを開くと、ノートと手元の画像が同じ Vault に入っているため、ノート内に画像が表示されます。
 
-Frontmatter の `cover: "releases/..."` は、Vault ルートを基準にしています。
-`notes` だけ、または `data_root` の親フォルダーを Vault として開くと、この参照先がずれます。
+Frontmatter の `cover: "3_releases/..."` は、Vault ルートを基準にしています。
+`4_notes` だけ、または `data_root` の親フォルダーを Vault として開くと、この参照先がずれます。
 
 `description`、`tags` と本文は自由に編集できます。
 `nouns`、`domains`、`projects` は、必要な場合だけ手動で追加します。
 
-`tkn-objstorage-imgcatalog notes refresh --source my-obj-storage-1` を実行すると、ギャラリー表示用の `notes/images.base`（Obsidian Bases のビュー）が、存在しない場合に作成されます。
+初期処理で配置する `4_notes/index.base` は、ギャラリー表示用の Obsidian Bases ビューの参考ファイルです。自由に編集・削除でき、CLI の画像処理・同期には使用しません。
+`notes refresh` は画像ノートだけを更新し、既存ライブラリーに `.base` を追加したり、編集済みのビューを上書きしたりしません。
 Vault と保存先の指定方法は「[6.2. Obsidian の Vault ルートと保存構成](#62-obsidian-の-vault-ルートと保存構成)」で説明します。
 
 ### 4.2. 日常の利用
@@ -457,7 +490,7 @@ tkn-objstorage-imgcatalog pull --source my-obj-storage-1
 手元と同じ内容の画像は置き換えず、追加・更新された画像だけを手元に反映します。
 手元にも変更があり競合した場合は停止します。
 
-**フォルダーや staging の画像をまとめてアップロードする**
+**フォルダーや 1_staging の画像をまとめてアップロードする**
 
 最初の実行と同じ `upload` で、フォルダー内の複数の画像も扱えます。
 
@@ -465,11 +498,11 @@ tkn-objstorage-imgcatalog pull --source my-obj-storage-1
 # フォルダー内の相対的な階層を保って、取り込みから送信まで実行する。
 tkn-objstorage-imgcatalog upload --source my-obj-storage-1 "C:\path\to\images"
 
-# 入力パスを省略すると、この source の staging フォルダー内の画像を対象にする。
+# 入力パスを省略すると、この source の 1_staging フォルダー内の画像を対象にする。
 tkn-objstorage-imgcatalog upload --source my-obj-storage-1
 ```
 
-`staging` は、取り込み待ちの画像を置くための任意のフォルダー（`<data_root>/staging`）です。
+`1_staging` は、初期処理で作成する取り込み待ちの画像用フォルダー（`<data_root>/1_staging`）です。利用は任意です。
 入力が空なら、アップロードしません。
 今回の入力に対応しない既存のアセットは、送信の対象になりません。
 
@@ -485,7 +518,7 @@ tkn-objstorage-imgcatalog upload --source my-obj-storage-1
 # フォルダーを取り込む。フォルダー内の相対的な階層を保つ。
 tkn-objstorage-imgcatalog import --source my-obj-storage-1 "C:\path\to\images"
 
-# 入力パスを省略すると、指定した source の staging フォルダーを取り込む。
+# 入力パスを省略すると、指定した source の 1_staging フォルダーを取り込む。
 tkn-objstorage-imgcatalog import --source my-obj-storage-1
 
 # 手元の状態を確認する。--remote を付けるとクラウドとも比較する。
@@ -543,7 +576,7 @@ tkn-objstorage-imgcatalog notes refresh --source my-obj-storage-1
 tkn-objstorage-imgcatalog verify --source my-obj-storage-1
 ```
 
-画像ノートは、`<data_root>/notes` の中であれば名前の変更や移動ができます。
+画像ノートは、`<data_root>/4_notes` の中であれば名前の変更や移動ができます。
 CLI は、ノートに記録された ID で対応するノートを見つけます。
 このフォルダーの外へ移動したノートは管理対象から外れるため、元の場所へ戻します。
 
@@ -574,7 +607,7 @@ tkn-objstorage-imgcatalog pull --source my-obj-storage-1 photo.webp --overwrite 
 
 `pull` が既存のアセットをクラウド側の内容で置き換えると、そのアセットは原本との対応を失います。
 ノートの `sourceAvailable` は `false` になり、以後 `build` の対象から外れます。
-`originals` に保存済みの原本ファイルは削除されません。
+`2_originals` に保存済みの原本ファイルは削除されません。
 
 ### 4.4. 途中で失敗したとき
 
@@ -755,14 +788,14 @@ sources:
 ```
 
 この例では、`image-vault` を Vault として開きます。
-`notes`、`releases`、`originals`、`staging` はその直下に置かれます。
+`1_staging`、`2_originals`、`3_releases`、`4_notes` はその直下に置かれます。
 保存領域を移動するときは、`data_root` の全体を一緒に移します。
 既存の Vault を使う場合は、これらのフォルダーが既存のデータと衝突しないことを確認してください。
 複数の source は、それぞれ独立した `data_root` を持ちます。
 
-- Frontmatter の `cover: "releases/..."` は、Vault ルートからの相対パスです。
+- Frontmatter の `cover: "3_releases/..."` は、Vault ルートからの相対パスです。
 - 本文の画像プレビューは、ノートの場所から公開用画像への相対パスです。
-- ノートの保存先は `<data_root>/notes` に固定です。設定キー `notes_root` と `--notes-root` は指定できません。
+- ノートの保存先は `<data_root>/4_notes` に固定です。設定キー `notes_root` と `--notes-root` は指定できません。
 - `.obsidian` は Obsidian が設定の保存用に管理するフォルダーで、CLI は作成しません。Obsidian の利用は任意です。
 
 
@@ -849,13 +882,23 @@ tkn-objstorage-imgcatalog notes refresh --source my-obj-storage-1
 保存先は、source ごとの `data_root` と `state_root` で変更できます。
 画像とノートは、`data_root` 配下で一体として管理します。
 
+`data_root` が未作成・空、または CLI の画像データがまだない場合、通常のデータ書き込みコマンド（`import`・`upload`・`build`・`push`・`pull`・`notes refresh`・`recover`）の開始時に、`1_staging`・`2_originals`・`3_releases`・`4_notes` と参考用の `4_notes/index.base` を作成します。
+判定対象は、`2_originals`・`3_releases` 内の対応形式の画像と、`4_notes` 内の画像管理項目を持つノートです。通常のノート・`.obsidian` の設定・取り込み待ちの `1_staging` の画像だけなら初期化します。
+既存のファイルと編集済みの `index.base` は保持します。画像データがあるライブラリーには初期処理を行わず、不足するフォルダーや参考ファイルを自動補充しません。
+`--dry-run`・`status`・`verify`・設定コマンドでは初期化しません。
+
+`index.base` は CLI の処理から参照されず、存在しなくても画像の取り込み・同期・ノート更新を実行できます。既存の `images.base` は変更・改名・削除しません。
+
+旧名の `staging`・`originals`・`releases`・`notes` にファイルが残っている場合、CLI は停止します。既存データでは、4つのフォルダーとノートの `releaseRef`・`originalRef`・`cover`・`localPath`、本文のローカル画像リンクを新名に揃えます。復旧用の実行記録にある原本参照と、Obsidian の保存済みファイル参照も更新します。画像 ID・クラウドのオブジェクトキー・URL・同期の基準は保持します。
+
 | 保存先 | 保存するもの | 失った場合 |
 | --- | --- | --- |
 | `config.yaml` | 利用者の設定 | `config init` で作り直し、設定をやり直します。 |
-| `data/<source-id>/staging/` | 取り込み待ちの画像を置く場所（任意）。入力パスを省略した `import` と `upload` が読み取ります。 | 影響はありません。 |
-| `data/<source-id>/originals/<sha256>/` | 取り込んだ原本。変更されません。 | 再作成できません。`build` で作り直せなくなります。 |
-| `data/<source-id>/releases/` | オブジェクトキーに対応する、現在の公開用画像 | 同期済みであれば `pull` で復元できます。 |
-| `data/<source-id>/notes/` | 画像の管理情報・説明・関連をまとめたノートと、Obsidian Bases のビュー | 画像 ID・原本との対応・変換条件の指紋・説明・本文を失います。バックアップから復元します。 |
+| `data/<source-id>/1_staging/` | 取り込み待ちの画像を置く場所（任意）。入力パスを省略した `import` と `upload` が読み取ります。 | 影響はありません。 |
+| `data/<source-id>/2_originals/<sha256>/` | 取り込んだ原本。変更されません。 | 再作成できません。`build` で作り直せなくなります。 |
+| `data/<source-id>/3_releases/` | オブジェクトキーに対応する、現在の公開用画像 | 同期済みであれば `pull` で復元できます。 |
+| `data/<source-id>/4_notes/index.base` | 初期処理で配置する Obsidian Bases の参考ビュー。CLI は参照しません。 | 画像処理・同期への影響はありません。 |
+| `data/<source-id>/4_notes/` | 画像の管理情報・説明・関連をまとめたノート | 画像 ID・原本との対応・変換条件の指紋・説明・本文を失います。バックアップから復元します。 |
 | `state/<source-id>/` | 同期の基準（`sync`）、実行・復旧の記録（`runs`）、ログ（`logs`） | 同期の基準や、中断からの復旧に必要な情報を失います。使い捨てのキャッシュではありません。 |
 
 画像1枚の管理情報は、その画像のノートに集約されています。
@@ -863,7 +906,7 @@ tkn-objstorage-imgcatalog notes refresh --source my-obj-storage-1
 ノートは説明を書く場所と管理台帳を兼ねるため、画像と一緒にバックアップしてください。
 
 バックアップでは、各 source の `data_root` と `state_root` の全体を対象にします。
-`originals` は取り込んだ原本だけを保持します。ノートや公開用画像の旧版を含む、独立したバックアップの代わりにはなりません。
+`2_originals` は取り込んだ原本だけを保持します。ノートや公開用画像の旧版を含む、独立したバックアップの代わりにはなりません。
 
 ファイルの形式、識別子、同期の判定規則は、[設定とデータの取り決め](docs/reference/contracts.md)で説明します。
 
@@ -874,23 +917,23 @@ tkn-objstorage-imgcatalog notes refresh --source my-obj-storage-1
 シーケンス図は上から下へ処理が進み、矢印は CLI によるコピー・変換・転送を表します。
 正常に書き込みを行う場合の流れを示し、競合による停止や `--dry-run` は省略しています。
 
-**入力画像は移動・削除されず、`staging` に置いた画像も取り込み後に残ります。**
+**入力画像は移動・削除されず、`1_staging` に置いた画像も取り込み後に残ります。**
 
 #### クラウドから取得する：pull
 
 ```mermaid
 sequenceDiagram
     participant Cloud as Object Storage
-    participant Releases as releases
-    participant Notes as notes
+    participant Releases as 3_releases
+    participant Notes as 4_notes
 
     Note over Cloud,Notes: pull：新規取得・復元・更新が必要な場合
-    Cloud->>Releases: 変換せずに保存 → releases/existing.webp
+    Cloud->>Releases: 変換せずに保存 → 3_releases/existing.webp
     Releases->>Notes: 画像ノートを作成・更新し、同期結果を反映
 ```
 
-`pull` は `staging` や `originals` を経由せず、クラウドの画像を直接 `releases` に保存します。
-新規に取得した画像と、内容を置き換えた画像には原本との対応がなく、`build` の対象になりません。既存の `originals` のファイル自体は残ります。
+`pull` は `1_staging` や `2_originals` を経由せず、クラウドの画像を直接 `3_releases` に保存します。
+新規に取得した画像と、内容を置き換えた画像には原本との対応がなく、`build` の対象になりません。既存の `2_originals` のファイル自体は残ります。
 手元とクラウドの内容が同じ場合は、画像を置き換えません。
 `pull` は置き換え前の公開用画像を保存しません。旧版が必要な場合は、実行前のバックアップから戻します。
 
@@ -901,17 +944,17 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-    participant Input as 入力フォルダー / staging
-    participant Originals as originals
-    participant Releases as releases
-    participant Notes as notes
+    participant Input as 入力フォルダー / 1_staging
+    participant Originals as 2_originals
+    participant Releases as 3_releases
+    participant Notes as 4_notes
     participant Cloud as Object Storage
 
-    Note over Input,Notes: import：指定した source に画像・フォルダーを取り込む（入力パス省略時はその source の staging）
-    Input->>Originals: photo.png をコピー → originals/＜sha256＞/photo.png
+    Note over Input,Notes: import：指定した source に画像・フォルダーを取り込む（入力パス省略時はその source の 1_staging）
+    Input->>Originals: photo.png をコピー → 2_originals/＜sha256＞/photo.png
     Note over Input: 入力画像はそのまま残る
-    Originals->>Releases: 原本を WebP に変換 → releases/photo.webp
-    Releases->>Notes: 画像へのリンクとメタデータを生成 → notes/photo.webp.md
+    Originals->>Releases: 原本を WebP に変換 → 3_releases/photo.webp
+    Releases->>Notes: 画像へのリンクとメタデータを生成 → 4_notes/photo.webp.md
     Note over Releases,Cloud: push：公開用画像をアップロード
     Releases->>Cloud: photo.webp を送信（設定した prefix 配下）
     Note over Originals,Releases: 原本と公開用画像は手元に残る
@@ -919,9 +962,9 @@ sequenceDiagram
 ```
 
 変換の対象は、静止画の JPEG と PNG です。
-その他の対応形式や `--no-convert` の場合は、原本と同じ形式・内容を `releases` にコピーします。
-`notes` に保存するのは Markdown で、画像自体は `releases` にあります。
-クラウドに送るのも `releases` の画像だけです。
+その他の対応形式や `--no-convert` の場合は、原本と同じ形式・内容を `3_releases` にコピーします。
+`4_notes` に保存するのは Markdown で、画像自体は `3_releases` にあります。
+クラウドに送るのも `3_releases` の画像だけです。
 
 #### upload の処理の流れ
 
@@ -930,7 +973,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    Input["入力画像・フォルダーを受け取る<br/>入力パス省略時は選択した source の staging"] --> Validate["source・入力・保存先を検証する"]
+    Input["入力画像・フォルダーを受け取る<br/>入力パス省略時は選択した source の 1_staging"] --> Validate["source・入力・保存先を検証する"]
     Validate --> Preview{"--dry-run を指定した?"}
     Preview -->|はい| Plan["取り込み対象と送信先の予定を表示する<br/>変換・保存・通信なし"]
     Preview -->|いいえ| Import["原本を保存 → 画像を変換 → ノートを作成する<br/>同じ入力の取り込み済み画像は再利用"]
@@ -947,12 +990,12 @@ flowchart TD
 
 ```mermaid
 sequenceDiagram
-    participant Originals as originals
-    participant Releases as releases
-    participant Notes as notes
+    participant Originals as 2_originals
+    participant Releases as 3_releases
+    participant Notes as 4_notes
 
     Note over Originals,Notes: build：変換設定を変更して公開用画像を作り直す場合
-    Originals->>Releases: 保存済みの photo.png から再作成 → releases/photo.webp を置き換え
+    Originals->>Releases: 保存済みの photo.png から再作成 → 3_releases/photo.webp を置き換え
     Note over Originals: 原本は変更しない
     Releases->>Notes: 画像ノートを更新
 ```
@@ -967,8 +1010,8 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant CLI as CLI
-    participant Notes as notes
-    participant Releases as releases
+    participant Notes as 4_notes
+    participant Releases as 3_releases
     participant State as state
 
     CLI->>State: runs に実行開始を記録し、logs にログを保存
